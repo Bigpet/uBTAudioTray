@@ -1,0 +1,9 @@
+#include <windows.h>
+#include "../src/resource.h"
+
+IDI_APP_ICON        ICON    "icon.ico"
+IDI_CONNECTING_ICON ICON    "icon-connecting.ico"
+
+// Manifest for Visual Styles and DPI Awareness
+1 RT_MANIFEST "app.manifest"
+
