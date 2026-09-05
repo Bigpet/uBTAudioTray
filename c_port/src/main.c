@@ -399,10 +399,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
 
     app_state_load(&g_appState);
 
-    g_hIconDefault = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-    g_hIconConnecting = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_CONNECTING_ICON));
+    int smWidth = GetSystemMetrics(SM_CXSMICON);
+    int smHeight = GetSystemMetrics(SM_CYSMICON);
+    g_hIconDefault = (HICON)LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, smWidth, smHeight, LR_DEFAULTCOLOR);
+    g_hIconConnecting = (HICON)LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_CONNECTING_ICON), IMAGE_ICON, smWidth, smHeight, LR_DEFAULTCOLOR);
 
     // Fallbacks if resources not found
+    if (!g_hIconDefault) g_hIconDefault = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+    if (!g_hIconConnecting) g_hIconConnecting = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_CONNECTING_ICON));
     if (!g_hIconDefault) g_hIconDefault = LoadIconW(NULL, IDI_APPLICATION);
     if (!g_hIconConnecting) g_hIconConnecting = g_hIconDefault;
 

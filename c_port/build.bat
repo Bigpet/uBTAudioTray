@@ -37,6 +37,9 @@ set BIN_DIR=%SCRIPT_DIR%bin
 
 if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 
+:: Close running instance if any to release file lock
+taskkill /IM QuickBTTray.exe /F >nul 2>&1
+
 echo Compiling resources...
 rc.exe /nologo /fo "%BIN_DIR%\resource.res" "%RES_DIR%\resource.rc"
 if %ERRORLEVEL% neq 0 (
