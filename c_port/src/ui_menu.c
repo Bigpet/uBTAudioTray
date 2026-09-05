@@ -51,7 +51,6 @@ static FnExitRequested g_fnExit = NULL;
 
 static HitTestResult g_hoveredHit = { HIT_NONE, -1 };
 static bool g_trackingMouse = false;
-static bool g_suppressDeactivate = false;
 
 extern AppState g_appState;
 
@@ -343,13 +342,9 @@ static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             if (hit.type == HIT_EXIT) {
                 if (g_fnExit) g_fnExit();
             } else if (hit.type == HIT_GEAR) {
-                DWORD now = GetTickCount();
                 if (ui_settings_is_visible()) {
                     ui_settings_hide();
-                } else if (now - ui_settings_get_last_hide_tick() < 250) {
-                    // Closed via deactivation from this click; stay closed
                 } else {
-                    g_suppressDeactivate = true;
                     if (g_fnSettings) g_fnSettings();
                 }
             } else if (hit.type == HIT_SETTINGS_LINK) {
@@ -373,11 +368,9 @@ static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         case WM_ACTIVATE:
             if (LOWORD(wParam) == WA_INACTIVE) {
                 HWND hActivating = (HWND)lParam;
-                HWND hSettings = ui_settings_get_hwnd();
-                if (!g_suppressDeactivate && hActivating != hSettings) {
+                if (hActivating != ui_settings_get_hwnd()) {
                     ui_menu_hide();
                 }
-                g_suppressDeactivate = false;
             }
             return 0;
 

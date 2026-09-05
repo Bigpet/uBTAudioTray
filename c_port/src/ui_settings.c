@@ -5,9 +5,7 @@
 #include <shellapi.h>
 #include <stdio.h>
 
-static DWORD g_lastHideTick = 0;
-
-#define SETTINGS_WIDTH 280
+#define SETTINGS_WIDTH 300
 #define SETTINGS_HEIGHT 255
 #define HEADER_HEIGHT 36
 #define OPTION_ROW_HEIGHT 28
@@ -339,25 +337,9 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LP
         case WM_ACTIVATE:
             if (LOWORD(wParam) == WA_INACTIVE) {
                 HWND hActivating = (HWND)lParam;
-                ui_settings_hide();
-
-                HWND hMenu = ui_menu_get_hwnd();
-                if (hMenu && IsWindowVisible(hMenu)) {
-                    bool focusOnMenu = false;
-                    if (hActivating == hMenu) {
-                        focusOnMenu = true;
-                    } else if (hActivating == NULL) {
-                        POINT pt;
-                        GetCursorPos(&pt);
-                        HWND hUnderCursor = WindowFromPoint(pt);
-                        if (hUnderCursor == hMenu || IsChild(hMenu, hUnderCursor)) {
-                            focusOnMenu = true;
-                        }
-                    }
-
-                    if (!focusOnMenu) {
-                        ui_menu_hide();
-                    }
+                if (hActivating != ui_menu_get_hwnd()) {
+                    ui_settings_hide();
+                    ui_menu_hide();
                 }
             }
             return 0;
@@ -415,11 +397,41 @@ HWND ui_settings_get_hwnd(void) {
     return g_hSettingsWnd;
 }
 
-void ui_settings_show(int anchorX, int anchorY) {
+void ui_settings_show(void) {
     if (!g_hSettingsWnd) return;
 
-    ui_position_window(g_hSettingsWnd, anchorX, anchorY, SETTINGS_WIDTH, SETTINGS_HEIGHT);
-    ShowWindow(g_hSettingsWnd, SW_SHOW);
+    HWND hMenu = ui_menu_get_hwnd();
+    if (!hMenu || !IsWindowVisible(hMenu)) return;
+
+    RECT menuRc = { 0 };
+    GetWindowRect(hMenu, &menuRc);
+
+    POINT pt = { menuRc.left, menuRc.top };
+    HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi = { sizeof(MONITORINFO) };
+    GetMonitorInfoW(hMon, &mi);
+    RECT work = mi.rcWork;
+
+    int left = menuRc.left;
+    int top = menuRc.top - SETTINGS_HEIGHT - 6;
+
+    // If not enough room directly above Menu, try to the left of Menu
+    if (top < work.top + 6) {
+        if (menuRc.left - SETTINGS_WIDTH - 6 >= work.left + 6) {
+            left = menuRc.left - SETTINGS_WIDTH - 6;
+            top = menuRc.bottom - SETTINGS_HEIGHT;
+        } else {
+            top = work.top + 6;
+        }
+    }
+
+    // Clamp within work area bounds
+    if (left < work.left + 6) left = work.left + 6;
+    if (left + SETTINGS_WIDTH > work.right - 6) left = work.right - SETTINGS_WIDTH - 6;
+    if (top < work.top + 6) top = work.top + 6;
+    if (top + SETTINGS_HEIGHT > work.bottom - 6) top = work.bottom - SETTINGS_HEIGHT - 6;
+
+    SetWindowPos(g_hSettingsWnd, HWND_TOPMOST, left, top, SETTINGS_WIDTH, SETTINGS_HEIGHT, SWP_SHOWWINDOW);
     SetForegroundWindow(g_hSettingsWnd);
     InvalidateRect(g_hSettingsWnd, NULL, TRUE);
 }
@@ -427,15 +439,10 @@ void ui_settings_show(int anchorX, int anchorY) {
 void ui_settings_hide(void) {
     if (g_hSettingsWnd && IsWindowVisible(g_hSettingsWnd)) {
         ShowWindow(g_hSettingsWnd, SW_HIDE);
-        g_lastHideTick = GetTickCount();
     }
 }
 
 bool ui_settings_is_visible(void) {
     return g_hSettingsWnd ? IsWindowVisible(g_hSettingsWnd) : false;
-}
-
-DWORD ui_settings_get_last_hide_tick(void) {
-    return g_lastHideTick;
 }
 

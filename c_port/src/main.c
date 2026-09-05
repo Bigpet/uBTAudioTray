@@ -317,9 +317,7 @@ static void on_device_toggle(const wchar_t* address, const wchar_t* name, bool c
 }
 
 static void on_settings_requested(void) {
-    POINT pt;
-    GetCursorPos(&pt);
-    ui_settings_show(pt.x, pt.y);
+    ui_settings_show();
 }
 
 static void on_exit_requested(void) {
@@ -329,7 +327,6 @@ static void on_exit_requested(void) {
 static void on_tray_left_click(void) {
     if (ui_menu_is_visible() || ui_settings_is_visible()) {
         ui_menu_hide();
-        ui_settings_hide();
         return;
     }
 
@@ -371,7 +368,6 @@ static void on_tray_right_click(void) {
 
     if (ui_menu_is_visible() || ui_settings_is_visible()) {
         ui_menu_hide();
-        ui_settings_hide();
         return;
     }
 
