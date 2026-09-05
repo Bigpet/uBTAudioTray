@@ -1,4 +1,4 @@
-# uBTAudioTray <img src="res/bt_icon_on.png" alt="uBTAudioTray Icon" width="60"/>
+# uBTAudioTray <img src="res/bt_icon_on.png" alt="uBTAudioTray Icon" width="40"/>
 
 Mostly LLM generated C rewrite of QuickBTTray.
 
