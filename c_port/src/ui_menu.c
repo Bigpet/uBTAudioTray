@@ -48,6 +48,7 @@ static int g_spinnerFrame = 0;
 static FnDeviceToggle g_fnToggle = NULL;
 static FnSettingsRequested g_fnSettings = NULL;
 static FnExitRequested g_fnExit = NULL;
+static FnSelectionChanged g_fnSelectionChanged = NULL;
 
 static HitTestResult g_hoveredHit = { HIT_NONE, -1 };
 static bool g_trackingMouse = false;
@@ -356,6 +357,7 @@ static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 app_state_set_selected(&g_appState, dev->address, !currentSel);
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+                if (g_fnSelectionChanged) g_fnSelectionChanged();
             } else if (hit.type == HIT_DEVICE_BTN && hit.index >= 0 && hit.index < g_deviceCount) {
                 BluetoothAudioDevice* dev = &g_devices[hit.index];
                 if (ui_menu_get_device_busy(dev->address) == DEVICE_BUSY_NONE && g_fnToggle) {
@@ -472,10 +474,11 @@ bool ui_menu_is_visible(void) {
     return g_hMenuWnd ? IsWindowVisible(g_hMenuWnd) : false;
 }
 
-void ui_menu_set_callbacks(FnDeviceToggle onToggle, FnSettingsRequested onSettings, FnExitRequested onExit) {
+void ui_menu_set_callbacks(FnDeviceToggle onToggle, FnSettingsRequested onSettings, FnExitRequested onExit, FnSelectionChanged onSelectionChanged) {
     g_fnToggle = onToggle;
     g_fnSettings = onSettings;
     g_fnExit = onExit;
+    g_fnSelectionChanged = onSelectionChanged;
 }
 
 void ui_menu_update_devices(const BluetoothAudioDevice* devices, int count) {

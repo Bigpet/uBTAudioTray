@@ -22,7 +22,8 @@
 #define WM_APP_ACTION_DONE    (WM_APP + 4)
 #define WM_APP_QUEUE_EMPTY    (WM_APP + 5)
 
-#define TIMER_BUSY_BLINK 1001
+#define TIMER_BUSY_BLINK      1001
+#define TIMER_PERIODIC_SCAN   1002
 #define MAX_QUEUE_SIZE 32
 
 typedef struct {
@@ -68,6 +69,8 @@ static NOTIFYICONDATAW g_nid = { 0 };
 static HICON g_hIconDefault = NULL;
 static HICON g_hIconConnecting = NULL;
 static bool g_blinkState = false;
+static bool g_isBusy = false;
+static volatile LONG g_isScanning = 0;
 
 static ActionQueue g_queue;
 static BatchToggleResult g_batchResults = { { 0 }, 0 };
@@ -89,7 +92,35 @@ static void show_tray_notification(const wchar_t* title, const wchar_t* message)
     Shell_NotifyIconW(NIM_MODIFY, &nid);
 }
 
+static HICON get_current_idle_icon(void) {
+    if (g_appState.selectedCount > 0) {
+        bool anySelectedConnected = false;
+        for (int i = 0; i < g_cachedDeviceCount; i++) {
+            if (app_state_is_selected(&g_appState, g_cachedDevices[i].address)) {
+                if (g_cachedDevices[i].isConnected) {
+                    anySelectedConnected = true;
+                    break;
+                }
+            }
+        }
+        if (!anySelectedConnected) {
+            return g_hIconConnecting;
+        }
+    }
+    return g_hIconDefault;
+}
+
+static void update_tray_icon(void) {
+    if (g_isBusy) return;
+    HICON targetIcon = get_current_idle_icon();
+    if (g_nid.hIcon != targetIcon) {
+        g_nid.hIcon = targetIcon;
+        Shell_NotifyIconW(NIM_MODIFY, &g_nid);
+    }
+}
+
 static void set_busy_state(bool isBusy) {
+    g_isBusy = isBusy;
     if (isBusy) {
         ui_menu_set_busy(true);
         g_blinkState = true;
@@ -99,9 +130,10 @@ static void set_busy_state(bool isBusy) {
     } else {
         KillTimer(g_hHiddenWnd, TIMER_BUSY_BLINK);
         g_blinkState = false;
-        g_nid.hIcon = g_hIconDefault;
-        Shell_NotifyIconW(NIM_MODIFY, &g_nid);
         ui_menu_set_busy(false);
+        HICON targetIcon = get_current_idle_icon();
+        g_nid.hIcon = targetIcon;
+        Shell_NotifyIconW(NIM_MODIFY, &g_nid);
     }
 }
 
@@ -109,7 +141,11 @@ static void set_busy_state(bool isBusy) {
 static DWORD WINAPI worker_scan_devices(LPVOID lpParam) {
     ScanResult* req = (ScanResult*)lpParam;
     ScanResult* res = (ScanResult*)malloc(sizeof(ScanResult));
-    if (!res) return 0;
+    if (!res) {
+        InterlockedExchange(&g_isScanning, 0);
+        if (req) free(req);
+        return 0;
+    }
     memset(res, 0, sizeof(ScanResult));
 
     if (req) {
@@ -119,16 +155,26 @@ static DWORD WINAPI worker_scan_devices(LPVOID lpParam) {
     }
 
     res->count = bt_discover_audio_devices(res->devices, MAX_BT_DEVICES);
+    InterlockedExchange(&g_isScanning, 0);
     PostMessageW(g_hHiddenWnd, WM_APP_SCAN_DONE, 0, (LPARAM)res);
     return 0;
 }
 
 static void queue_device_scan(bool showMenuAfterScan, POINT anchorPt) {
+    if (!showMenuAfterScan && InterlockedCompareExchange(&g_isScanning, 1, 0) != 0) {
+        return;
+    }
+    if (showMenuAfterScan) {
+        InterlockedExchange(&g_isScanning, 1);
+    }
+
     ScanResult* req = (ScanResult*)malloc(sizeof(ScanResult));
     if (req) {
         req->showMenuAfterScan = showMenuAfterScan;
         req->anchorPt = anchorPt;
         QueueUserWorkItem(worker_scan_devices, req, WT_EXECUTEDEFAULT);
+    } else {
+        InterlockedExchange(&g_isScanning, 0);
     }
 }
 
@@ -324,6 +370,10 @@ static void on_exit_requested(void) {
     PostQuitMessage(0);
 }
 
+static void on_selection_changed(void) {
+    update_tray_icon();
+}
+
 static void on_tray_left_click(void) {
     if (ui_menu_is_visible() || ui_settings_is_visible()) {
         ui_menu_hide();
@@ -399,6 +449,11 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                 g_blinkState = !g_blinkState;
                 g_nid.hIcon = g_blinkState ? g_hIconConnecting : g_hIconDefault;
                 Shell_NotifyIconW(NIM_MODIFY, &g_nid);
+            } else if (wParam == TIMER_PERIODIC_SCAN) {
+                if (!g_isBusy) {
+                    POINT dummyPt = { 0, 0 };
+                    queue_device_scan(false, dummyPt);
+                }
             }
             return 0;
 
@@ -422,6 +477,8 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                     ui_menu_show(res->anchorPt.x, res->anchorPt.y);
                 }
                 free(res);
+
+                update_tray_icon();
             }
             return 0;
         }
@@ -463,6 +520,7 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                         }
                     }
                     ui_menu_update_devices(g_cachedDevices, g_cachedDeviceCount);
+                    update_tray_icon();
                 }
 
                 if (tr->outcome == TOGGLE_CONNECTED) g_batchHadConnect = true;
@@ -512,6 +570,7 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             return 0;
 
         case WM_DESTROY:
+            KillTimer(hwnd, TIMER_PERIODIC_SCAN);
             PostQuitMessage(0);
             return 0;
     }
@@ -564,7 +623,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     // Initialize UI windows
     ui_menu_init(hInstance, g_hHiddenWnd);
     ui_settings_init(hInstance, g_hHiddenWnd);
-    ui_menu_set_callbacks(on_device_toggle, on_settings_requested, on_exit_requested);
+    ui_menu_set_callbacks(on_device_toggle, on_settings_requested, on_exit_requested, on_selection_changed);
 
     // Register system tray icon
     memset(&g_nid, 0, sizeof(NOTIFYICONDATAW));
@@ -573,13 +632,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     g_nid.uID = 1;
     g_nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
     g_nid.uCallbackMessage = WM_APP_TRAYMSG;
-    g_nid.hIcon = g_hIconDefault;
+    g_nid.hIcon = get_current_idle_icon();
     wcscpy_s(g_nid.szTip, sizeof(g_nid.szTip) / sizeof(wchar_t), L"uBTAudioTray");
     Shell_NotifyIconW(NIM_ADD, &g_nid);
 
     // Initial background scan
     POINT dummyPt = { 0, 0 };
     queue_device_scan(false, dummyPt);
+
+    // Periodic background scan (every 4 seconds) to detect external connects/disconnects
+    SetTimer(g_hHiddenWnd, TIMER_PERIODIC_SCAN, 4000, NULL);
 
     // Message loop
     MSG msg;
