@@ -395,7 +395,7 @@ void ui_menu_init(HINSTANCE hInstance, HWND hTrayWnd) {
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.lpfnWndProc = menu_wnd_proc;
     wc.hInstance = hInstance;
-    wc.lpszClassName = L"QuickBTTray_MenuWindow";
+    wc.lpszClassName = L"uBTAudioTray_MenuWindow";
     wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
     wc.style = CS_DROPSHADOW | CS_HREDRAW | CS_VREDRAW;
 
@@ -404,7 +404,7 @@ void ui_menu_init(HINSTANCE hInstance, HWND hTrayWnd) {
     g_hMenuWnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
         wc.lpszClassName,
-        L"QuickBTTray Menu",
+        L"uBTAudioTray Menu",
         WS_POPUP,
         0, 0, WINDOW_WIDTH, 100,
         NULL, NULL, hInstance, NULL);

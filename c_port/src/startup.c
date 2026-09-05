@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 static const wchar_t* REG_KEY_RUN = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
-static const wchar_t* APP_NAME = L"QuickBTTray";
+static const wchar_t* APP_NAME = L"uBTAudioTray";
 
 bool startup_is_enabled(void) {
     HKEY hKey = NULL;

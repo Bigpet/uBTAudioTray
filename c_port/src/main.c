@@ -319,7 +319,7 @@ static void on_exit_requested(void) {
 
 static void on_tray_left_click(void) {
     if (g_appState.selectedCount == 0) {
-        show_tray_notification(L"QuickBTTray", L"No devices selected to Connect/Disconnect in the right-click menu.");
+        show_tray_notification(L"uBTAudioTray", L"No devices selected to Connect/Disconnect in the right-click menu.");
         return;
     }
 
@@ -343,7 +343,7 @@ static void on_tray_left_click(void) {
     }
     bool targetConnect = !allConnected;
 
-    show_tray_notification(L"QuickBTTray", targetConnect ? L"Connecting selected devices..." : L"Disconnecting selected devices...");
+    show_tray_notification(L"uBTAudioTray", targetConnect ? L"Connecting selected devices..." : L"Disconnecting selected devices...");
 
     for (int i = 0; i < selCount; i++) {
         on_device_toggle(selected[i].address, selected[i].name, targetConnect);
@@ -495,7 +495,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     (void)nCmdShow;
 
     // Single instance mutex
-    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"QuickBTTray_SingleInstance_Mutex");
+    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"uBTAudioTray_SingleInstance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         CloseHandle(hMutex);
         return 0;
@@ -524,10 +524,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.lpfnWndProc = hidden_wnd_proc;
     wc.hInstance = hInstance;
-    wc.lpszClassName = L"QuickBTTray_HiddenMsgWnd";
+    wc.lpszClassName = L"uBTAudioTray_HiddenMsgWnd";
     RegisterClassExW(&wc);
 
-    g_hHiddenWnd = CreateWindowExW(0, wc.lpszClassName, L"QuickBTTrayMsg", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, hInstance, NULL);
+    g_hHiddenWnd = CreateWindowExW(0, wc.lpszClassName, L"uBTAudioTrayMsg", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, hInstance, NULL);
 
     queue_init();
 
@@ -544,7 +544,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     g_nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
     g_nid.uCallbackMessage = WM_APP_TRAYMSG;
     g_nid.hIcon = g_hIconDefault;
-    wcscpy_s(g_nid.szTip, sizeof(g_nid.szTip) / sizeof(wchar_t), L"QuickBTTray");
+    wcscpy_s(g_nid.szTip, sizeof(g_nid.szTip) / sizeof(wchar_t), L"uBTAudioTray");
     Shell_NotifyIconW(NIM_ADD, &g_nid);
 
     // Initial background scan

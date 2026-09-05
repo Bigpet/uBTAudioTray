@@ -1,4 +1,4 @@
-# QuickBTTray Icon Update Script
+# uBTAudioTray Icon Update Script
 # Converts bt_icon_on.svg and bt_icon_off.svg to multi-resolution .ico files
 
 param(
@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host "===================================================" -ForegroundColor Cyan
-Write-Host "QuickBTTray Icon Generator" -ForegroundColor Cyan
+Write-Host "uBTAudioTray Icon Generator" -ForegroundColor Cyan
 Write-Host "===================================================" -ForegroundColor Cyan
 
 # 1. Locate Inkscape
@@ -171,7 +171,7 @@ try {
 if ($Rebuild) {
     $buildBat = Join-Path $PSScriptRoot "..\build.bat"
     if (Test-Path $buildBat) {
-        Write-Host "Rebuilding QuickBTTray.exe..." -ForegroundColor Yellow
+        Write-Host "Rebuilding uBTAudioTray.exe..." -ForegroundColor Yellow
         cmd.exe /c "call `"$buildBat`""
     }
 }

@@ -114,7 +114,7 @@ static void on_paint_settings(HWND hwnd) {
     }
     SelectObject(memDC, g_hFontSmall);
     SetTextColor(memDC, theme.accent);
-    DrawTextW(memDC, L"QuickBTTray-v1.0", -1, &gitRc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(memDC, L"uBTAudioTray-v1.0", -1, &gitRc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 
     // Separator
     HPEN sepPen = CreatePen(PS_SOLID, 1, theme.separator);
@@ -324,7 +324,7 @@ void ui_settings_init(HINSTANCE hInstance, HWND hTrayWnd) {
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.lpfnWndProc = settings_wnd_proc;
     wc.hInstance = hInstance;
-    wc.lpszClassName = L"QuickBTTray_SettingsWindow";
+    wc.lpszClassName = L"uBTAudioTray_SettingsWindow";
     wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
     wc.style = CS_DROPSHADOW | CS_HREDRAW | CS_VREDRAW;
 
@@ -333,7 +333,7 @@ void ui_settings_init(HINSTANCE hInstance, HWND hTrayWnd) {
     g_hSettingsWnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
         wc.lpszClassName,
-        L"QuickBTTray Settings",
+        L"uBTAudioTray Settings",
         WS_POPUP,
         0, 0, SETTINGS_WIDTH, SETTINGS_HEIGHT,
         NULL, NULL, hInstance, NULL);

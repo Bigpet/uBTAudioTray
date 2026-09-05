@@ -3,10 +3,10 @@
   <assemblyIdentity
     version="1.0.0.0"
     processorArchitecture="*"
-    name="QuickBTTray"
+    name="uBTAudioTray"
     type="win32"
   />
-  <description>QuickBTTray - Bluetooth Audio Quick Connect</description>
+  <description>uBTAudioTray - Bluetooth Audio Quick Connect</description>
   <dependency>
     <dependentAssembly>
       <assemblyIdentity

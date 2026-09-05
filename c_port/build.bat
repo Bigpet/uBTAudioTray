@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ===================================================
-echo Building QuickBTTray Native C Port
+echo Building uBTAudioTray Native C Port
 echo ===================================================
 
 :: Check if cl is already in PATH
@@ -38,7 +38,7 @@ set BIN_DIR=%SCRIPT_DIR%bin
 if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 
 :: Close running instance if any to release file lock
-taskkill /IM QuickBTTray.exe /F >nul 2>&1
+taskkill /IM uBTAudioTray.exe /F >nul 2>&1
 
 echo Compiling resources...
 rc.exe /nologo /fo "%BIN_DIR%\resource.res" "%RES_DIR%\resource.rc"
@@ -47,9 +47,9 @@ if %ERRORLEVEL% neq 0 (
     exit /b %ERRORLEVEL%
 )
 
-echo Compiling and linking QuickBTTray.exe...
+echo Compiling and linking uBTAudioTray.exe...
 cl.exe /nologo /O2 /W4 /wd4201 /GL /utf-8 /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_WARNINGS ^
-    /Fe"%BIN_DIR%\QuickBTTray.exe" /Fo"%BIN_DIR%\\" ^
+    /Fe"%BIN_DIR%\uBTAudioTray.exe" /Fo"%BIN_DIR%\\" ^
     "%SRC_DIR%\app_state.c" ^
     "%SRC_DIR%\startup.c" ^
     "%SRC_DIR%\theme.c" ^
@@ -66,10 +66,10 @@ cl.exe /nologo /O2 /W4 /wd4201 /GL /utf-8 /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_
 if %ERRORLEVEL% equ 0 (
     echo.
     echo ===================================================
-    echo SUCCESS: %BIN_DIR%\QuickBTTray.exe built successfully!
+    echo SUCCESS: %BIN_DIR%\uBTAudioTray.exe built successfully!
     echo ===================================================
     del "%BIN_DIR%\*.obj" "%BIN_DIR%\*.res" >nul 2>&1
-    dir "%BIN_DIR%\QuickBTTray.exe" | findstr /i "QuickBTTray.exe"
+    dir "%BIN_DIR%\uBTAudioTray.exe" | findstr /i "uBTAudioTray.exe"
 ) else (
     echo.
     echo ERROR: Build failed.

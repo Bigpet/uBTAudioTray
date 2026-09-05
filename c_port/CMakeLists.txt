@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(QuickBTTray C)
+project(uBTAudioTray C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -19,13 +19,13 @@ set(SOURCES
     res/resource.rc
 )
 
-add_executable(QuickBTTray WIN32 ${SOURCES})
+add_executable(uBTAudioTray WIN32 ${SOURCES})
 
-target_compile_options(QuickBTTray PRIVATE
+target_compile_options(uBTAudioTray PRIVATE
     $<$<C_COMPILER_ID:MSVC>:/W4 /wd4201 /utf-8 /O2>
 )
 
-target_link_libraries(QuickBTTray PRIVATE
+target_link_libraries(uBTAudioTray PRIVATE
     user32
     gdi32
     shell32

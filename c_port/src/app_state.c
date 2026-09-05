@@ -9,6 +9,14 @@ static void get_state_path(wchar_t* outPath, size_t maxLen) {
     if (!GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH)) {
         SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, localAppData);
     }
+    swprintf_s(outPath, maxLen, L"%s\\uBTAudioTray\\tray-state.json", localAppData);
+}
+
+static void get_legacy_state_path(wchar_t* outPath, size_t maxLen) {
+    wchar_t localAppData[MAX_PATH] = { 0 };
+    if (!GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH)) {
+        SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, localAppData);
+    }
     swprintf_s(outPath, maxLen, L"%s\\QuickBTTray\\tray-state.json", localAppData);
 }
 
@@ -85,7 +93,11 @@ bool app_state_load(AppState* state) {
 
     HANDLE hFile = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
-        return false;
+        get_legacy_state_path(path, MAX_PATH);
+        hFile = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            return false;
+        }
     }
 
     DWORD fileSize = GetFileSize(hFile, NULL);
