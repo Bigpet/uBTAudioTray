@@ -289,6 +289,19 @@ static bool is_device_audio_active(const wchar_t* address, const wchar_t* name) 
     return false;
 }
 
+static int compare_bluetooth_devices(const void* a, const void* b) {
+    const BluetoothAudioDevice* devA = (const BluetoothAudioDevice*)a;
+    const BluetoothAudioDevice* devB = (const BluetoothAudioDevice*)b;
+
+    int cmp = _wcsicmp(devA->name, devB->name);
+    if (cmp != 0) return cmp;
+
+    cmp = wcscmp(devA->name, devB->name);
+    if (cmp != 0) return cmp;
+
+    return _wcsicmp(devA->address, devB->address);
+}
+
 int bt_discover_audio_devices(BluetoothAudioDevice* outDevices, int maxDevices) {
     bt_init();
     if (!outDevices || maxDevices <= 0) return 0;
@@ -383,6 +396,10 @@ int bt_discover_audio_devices(BluetoothAudioDevice* outDevices, int maxDevices) 
     } while (BluetoothFindNextDevice(hFind, &deviceInfo));
 
     BluetoothFindDeviceClose(hFind);
+
+    if (deviceCount > 1) {
+        qsort(outDevices, deviceCount, sizeof(BluetoothAudioDevice), compare_bluetooth_devices);
+    }
 
     // Disambiguate duplicate names
     for (int i = 0; i < deviceCount; i++) {
