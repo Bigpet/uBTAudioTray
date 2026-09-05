@@ -280,7 +280,7 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LP
             SettingsHitType hit = hit_test_settings(x, y);
 
             if (hit == SET_HIT_GITHUB) {
-                ShellExecuteW(NULL, L"open", L"https://github.com/QuickBTTray/QuickBTTray", NULL, NULL, SW_SHOWNORMAL);
+                ShellExecuteW(NULL, L"open", L"https://github.com/Bigpet/uBTAudioTray", NULL, NULL, SW_SHOWNORMAL);
             } else if (hit == SET_HIT_NOTIFICATIONS) {
                 g_appState.enableNotifications = !g_appState.enableNotifications;
                 app_state_save(&g_appState);
