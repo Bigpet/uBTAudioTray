@@ -1,8 +1,11 @@
-# QuickBTTray <img src="sources/icon-app/icon.png" alt="QuickBTTray Icon" width="60"/>
+# uBTAudioTray <img src="res/bt_icon_on.png" alt="uBTAudioTray
+ Icon" width="60"/>
+
+Mostly LLM generated C rewrite of QuickBTTray.
 
 A lightweight Windows tray application for quick management of Bluetooth audio devices.
 
-<img src="sources/app-screenshot/app-screenshot.png?v=2" alt="QuickBTTray Icon"/>
+<img src="res/Screenshot_uBTAudioTray.png" alt="uBTAudioTray Icon"/>
 
 I created this app because AirPods don’t support automatic switching between an iPhone and a PC. While they stay paired to both, manually connecting through Windows 11 Bluetooth menus several times a day quickly becomes tedious (which I do at work). This app minimizes that friction: a simple left-click on the tray icon instantly toggles the connection of the devices you’ve selected in the app's menu. This app should hopefully work for anyone who has a Bluetooth headset without multipoint support.
 
@@ -28,23 +31,20 @@ I created this app because AirPods don’t support automatic switching between a
 	`HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
 
 ## Usage Instructions
-1. **Run QuickBTTray.exe** (standalone, no install required)
+1. **Run uBTAudioTray.exe** (standalone, no install required)
 2. **Select your Bluetooth audio devices** in the right-click tray menu
 3. **Click the tray icon** to connect/disconnect selected devices
 4. **Use the gear/settings menu** for connection methods and notifaction settings
 
 ## Requirements
 - Windows 10/11
-- .NET 8.0 Desktop Runtime (if using the smaller, non-standalone EXE)
+
 
 ## Building
+You need the Win10 or Win11 SDK installed.
 - To build a portable, standalone EXE:
 	```
-	dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
-	```
-- For a smaller EXE (requires .NET 8 runtime on target):
-	```
-	dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish-trimmed
+	build.bat
 	```
 
 ## Notes
