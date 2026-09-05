@@ -17,9 +17,12 @@
 
 #define WM_APP_TRAYMSG        (WM_APP + 1)
 #define WM_APP_SCAN_DONE      (WM_APP + 2)
-#define WM_APP_TOGGLE_DONE    (WM_APP + 3)
+#define WM_APP_ACTION_START   (WM_APP + 3)
+#define WM_APP_ACTION_DONE    (WM_APP + 4)
+#define WM_APP_QUEUE_EMPTY    (WM_APP + 5)
 
 #define TIMER_BUSY_BLINK 1001
+#define MAX_QUEUE_SIZE 32
 
 typedef struct {
     BluetoothAudioDevice devices[MAX_BT_DEVICES];
@@ -33,13 +36,42 @@ typedef struct {
     int count;
 } BatchToggleResult;
 
+typedef struct {
+    wchar_t address[24];
+    wchar_t name[248];
+    bool isConnect;
+} QueuedAction;
+
+typedef struct {
+    QueuedAction items[MAX_QUEUE_SIZE];
+    int head;
+    int tail;
+    int count;
+    CRITICAL_SECTION cs;
+    HANDLE hWorkEvent;
+    HANDLE hStopEvent;
+    HANDLE hThread;
+    QueuedAction currentItem;
+    bool hasCurrent;
+} ActionQueue;
+
+typedef struct {
+    wchar_t address[24];
+    wchar_t name[248];
+    bool isConnect;
+} ActionStartInfo;
+
 AppState g_appState;
 static HWND g_hHiddenWnd = NULL;
 static NOTIFYICONDATAW g_nid = { 0 };
 static HICON g_hIconDefault = NULL;
 static HICON g_hIconConnecting = NULL;
 static bool g_blinkState = false;
-static volatile LONG g_isOperationBusy = 0;
+
+static ActionQueue g_queue;
+static BatchToggleResult g_batchResults = { { 0 }, 0 };
+static bool g_batchHadConnect = false;
+static bool g_batchHadDisconnect = false;
 
 static BluetoothAudioDevice g_cachedDevices[MAX_BT_DEVICES];
 static int g_cachedDeviceCount = 0;
@@ -112,6 +144,12 @@ static DWORD WINAPI worker_poll_settled(LPVOID lpParam) {
 
     bool settled = false;
     for (int attempt = 0; attempt < 8; attempt++) {
+        // If a new action has been queued, abort settled poll early
+        EnterCriticalSection(&g_queue.cs);
+        bool busyAgain = (g_queue.hasCurrent || g_queue.count > 0);
+        LeaveCriticalSection(&g_queue.cs);
+        if (busyAgain) break;
+
         res->count = bt_discover_audio_devices(res->devices, MAX_BT_DEVICES);
 
         settled = true;
@@ -140,100 +178,133 @@ static DWORD WINAPI worker_poll_settled(LPVOID lpParam) {
     return 0;
 }
 
-typedef struct {
-    wchar_t address[24];
-    wchar_t name[248];
-    bool isConnect;
-    bool isBatch;
-} ToggleWorkerParam;
+static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
+    (void)lpParam;
+    HANDLE waitHandles[2] = { g_queue.hStopEvent, g_queue.hWorkEvent };
 
-// Background worker for connecting/disconnecting devices
-static DWORD WINAPI worker_toggle_device(LPVOID lpParam) {
-    ToggleWorkerParam* param = (ToggleWorkerParam*)lpParam;
-    BatchToggleResult* res = (BatchToggleResult*)malloc(sizeof(BatchToggleResult));
-    if (!res) {
-        free(param);
-        InterlockedExchange(&g_isOperationBusy, 0);
-        return 0;
-    }
-    memset(res, 0, sizeof(BatchToggleResult));
-
-    if (param->isBatch) {
-        // Batch toggle all selected devices
-        BluetoothAudioDevice devices[MAX_BT_DEVICES];
-        int count = bt_discover_audio_devices(devices, MAX_BT_DEVICES);
-
-        // Find selected devices
-        BluetoothAudioDevice selected[MAX_BT_DEVICES];
-        int selCount = 0;
-        for (int i = 0; i < count; i++) {
-            if (app_state_is_selected(&g_appState, devices[i].address) && selCount < MAX_BT_DEVICES) {
-                selected[selCount++] = devices[i];
-            }
+    while (1) {
+        DWORD wr = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
+        if (wr == WAIT_OBJECT_0) {
+            // Stop requested
+            break;
         }
+        if (wr == WAIT_OBJECT_0 + 1) {
+            // Work event signaled: drain items sequentially
+            while (1) {
+                QueuedAction item = { { 0 } };
+                bool hasWork = false;
 
-        if (selCount > 0) {
-            bool allConnected = true;
-            for (int i = 0; i < selCount; i++) {
-                if (!selected[i].isConnected) { allConnected = false; break; }
-            }
-
-            for (int i = 0; i < selCount; i++) {
-                DeviceToggleResult* r = &res->results[res->count++];
-                if (allConnected) {
-                    // Disconnect
-                    if (g_appState.useHciDisconnect) {
-                        bt_disconnect_device_hci(selected[i].address, selected[i].name, r);
-                    } else {
-                        bt_disconnect_device_api(selected[i].address, selected[i].name, r);
-                    }
+                EnterCriticalSection(&g_queue.cs);
+                if (g_queue.count > 0) {
+                    item = g_queue.items[g_queue.head];
+                    g_queue.head = (g_queue.head + 1) % MAX_QUEUE_SIZE;
+                    g_queue.count--;
+                    g_queue.currentItem = item;
+                    g_queue.hasCurrent = true;
+                    hasWork = true;
                 } else {
-                    // Connect
-                    bt_connect_device_api(selected[i].address, selected[i].name, r);
+                    g_queue.hasCurrent = false;
+                }
+                LeaveCriticalSection(&g_queue.cs);
+
+                if (!hasWork) {
+                    PostMessageW(g_hHiddenWnd, WM_APP_QUEUE_EMPTY, 0, 0);
+                    break;
+                }
+
+                // Notify main thread that this action is starting
+                ActionStartInfo* startInfo = (ActionStartInfo*)malloc(sizeof(ActionStartInfo));
+                if (startInfo) {
+                    wcsncpy_s(startInfo->address, 24, item.address, _TRUNCATE);
+                    wcsncpy_s(startInfo->name, 248, item.name, _TRUNCATE);
+                    startInfo->isConnect = item.isConnect;
+                    PostMessageW(g_hHiddenWnd, WM_APP_ACTION_START, 0, (LPARAM)startInfo);
+                }
+
+                // Execute action synchronously
+                DeviceToggleResult* tr = (DeviceToggleResult*)malloc(sizeof(DeviceToggleResult));
+                if (tr) {
+                    memset(tr, 0, sizeof(DeviceToggleResult));
+                    if (item.isConnect) {
+                        bt_connect_device_api(item.address, item.name, tr);
+                    } else {
+                        if (g_appState.useHciDisconnect) {
+                            bt_disconnect_device_hci(item.address, item.name, tr);
+                        } else {
+                            bt_disconnect_device_api(item.address, item.name, tr);
+                        }
+                    }
+                    PostMessageW(g_hHiddenWnd, WM_APP_ACTION_DONE, 0, (LPARAM)tr);
+                }
+
+                if (WaitForSingleObject(g_queue.hStopEvent, 0) == WAIT_OBJECT_0) {
+                    return 0;
                 }
             }
         }
-    } else {
-        // Single device toggle
-        DeviceToggleResult* r = &res->results[res->count++];
-        if (param->isConnect) {
-            bt_connect_device_api(param->address, param->name, r);
-        } else {
-            if (g_appState.useHciDisconnect) {
-                bt_disconnect_device_hci(param->address, param->name, r);
-            } else {
-                bt_disconnect_device_api(param->address, param->name, r);
-            }
-        }
     }
-
-    free(param);
-    PostMessageW(g_hHiddenWnd, WM_APP_TOGGLE_DONE, 0, (LPARAM)res);
     return 0;
 }
 
+static void queue_init(void) {
+    memset(&g_queue, 0, sizeof(ActionQueue));
+    InitializeCriticalSection(&g_queue.cs);
+    g_queue.hWorkEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_queue.hStopEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    g_queue.hThread = CreateThread(NULL, 0, queue_worker_thread, NULL, 0, NULL);
+}
+
+static void queue_cleanup(void) {
+    if (g_queue.hStopEvent) {
+        SetEvent(g_queue.hStopEvent);
+    }
+    if (g_queue.hThread) {
+        WaitForSingleObject(g_queue.hThread, 3000);
+        CloseHandle(g_queue.hThread);
+        g_queue.hThread = NULL;
+    }
+    if (g_queue.hWorkEvent) {
+        CloseHandle(g_queue.hWorkEvent);
+        g_queue.hWorkEvent = NULL;
+    }
+    if (g_queue.hStopEvent) {
+        CloseHandle(g_queue.hStopEvent);
+        g_queue.hStopEvent = NULL;
+    }
+    DeleteCriticalSection(&g_queue.cs);
+}
+
 static void on_device_toggle(const wchar_t* address, const wchar_t* name, bool connect) {
-    if (InterlockedCompareExchange(&g_isOperationBusy, 1, 0) != 0) {
-        show_tray_notification(L"QuickBTTray", L"A Bluetooth action is already running.");
+    EnterCriticalSection(&g_queue.cs);
+    bool alreadyActive = (g_queue.hasCurrent && _wcsicmp(g_queue.currentItem.address, address) == 0);
+    bool alreadyQueued = false;
+    for (int i = 0; i < g_queue.count; i++) {
+        int idx = (g_queue.head + i) % MAX_QUEUE_SIZE;
+        if (_wcsicmp(g_queue.items[idx].address, address) == 0) {
+            alreadyQueued = true;
+            break;
+        }
+    }
+    bool isBusyNow = (g_queue.hasCurrent || g_queue.count > 0);
+
+    if (alreadyActive || alreadyQueued) {
+        LeaveCriticalSection(&g_queue.cs);
         return;
     }
 
-    set_busy_state(true);
-
-    wchar_t notifyTitle[64];
-    swprintf_s(notifyTitle, 64, L"%s (%s)", connect ? L"Connecting" : L"Disconnecting",
-        connect ? (g_appState.useUiaConnect ? L"UI" : L"API")
-                : (g_appState.useHciDisconnect ? L"HCI" : (g_appState.useUiaDisconnect ? L"UI" : L"API")));
-    show_tray_notification(notifyTitle, name);
-
-    ToggleWorkerParam* p = (ToggleWorkerParam*)malloc(sizeof(ToggleWorkerParam));
-    if (p) {
-        wcscpy_s(p->address, 24, address);
-        wcscpy_s(p->name, 248, name);
-        p->isConnect = connect;
-        p->isBatch = false;
-        QueueUserWorkItem(worker_toggle_device, p, WT_EXECUTEDEFAULT);
+    if (g_queue.count < MAX_QUEUE_SIZE) {
+        QueuedAction* item = &g_queue.items[g_queue.tail];
+        wcsncpy_s(item->address, 24, address, _TRUNCATE);
+        wcsncpy_s(item->name, 248, name, _TRUNCATE);
+        item->isConnect = connect;
+        g_queue.tail = (g_queue.tail + 1) % MAX_QUEUE_SIZE;
+        g_queue.count++;
+        SetEvent(g_queue.hWorkEvent);
     }
+    LeaveCriticalSection(&g_queue.cs);
+
+    ui_menu_set_device_busy(address, isBusyNow ? DEVICE_BUSY_QUEUED : (connect ? DEVICE_BUSY_CONNECTING : DEVICE_BUSY_DISCONNECTING));
+    set_busy_state(true);
 }
 
 static void on_settings_requested(void) {
@@ -252,19 +323,30 @@ static void on_tray_left_click(void) {
         return;
     }
 
-    if (InterlockedCompareExchange(&g_isOperationBusy, 1, 0) != 0) {
-        show_tray_notification(L"QuickBTTray", L"A Bluetooth action is already running.");
+    BluetoothAudioDevice selected[MAX_BT_DEVICES];
+    int selCount = 0;
+    for (int i = 0; i < g_cachedDeviceCount; i++) {
+        if (app_state_is_selected(&g_appState, g_cachedDevices[i].address) && selCount < MAX_BT_DEVICES) {
+            selected[selCount++] = g_cachedDevices[i];
+        }
+    }
+
+    if (selCount == 0) {
+        POINT dummyPt = { 0, 0 };
+        queue_device_scan(false, dummyPt);
         return;
     }
 
-    set_busy_state(true);
-    show_tray_notification(L"QuickBTTray", L"Toggling selected Bluetooth audio devices...");
+    bool allConnected = true;
+    for (int i = 0; i < selCount; i++) {
+        if (!selected[i].isConnected) { allConnected = false; break; }
+    }
+    bool targetConnect = !allConnected;
 
-    ToggleWorkerParam* p = (ToggleWorkerParam*)malloc(sizeof(ToggleWorkerParam));
-    if (p) {
-        memset(p, 0, sizeof(ToggleWorkerParam));
-        p->isBatch = true;
-        QueueUserWorkItem(worker_toggle_device, p, WT_EXECUTEDEFAULT);
+    show_tray_notification(L"QuickBTTray", targetConnect ? L"Connecting selected devices..." : L"Disconnecting selected devices...");
+
+    for (int i = 0; i < selCount; i++) {
+        on_device_toggle(selected[i].address, selected[i].name, targetConnect);
     }
 }
 
@@ -332,36 +414,63 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             return 0;
         }
 
-        case WM_APP_TOGGLE_DONE: {
-            BatchToggleResult* res = (BatchToggleResult*)lParam;
+        case WM_APP_ACTION_START: {
+            ActionStartInfo* info = (ActionStartInfo*)lParam;
+            if (info) {
+                ui_menu_set_device_busy(info->address, info->isConnect ? DEVICE_BUSY_CONNECTING : DEVICE_BUSY_DISCONNECTING);
+
+                wchar_t notifyTitle[64];
+                swprintf_s(notifyTitle, 64, L"%s (%s)", info->isConnect ? L"Connecting" : L"Disconnecting",
+                    info->isConnect ? (g_appState.useUiaConnect ? L"UI" : L"API")
+                                    : (g_appState.useHciDisconnect ? L"HCI" : (g_appState.useUiaDisconnect ? L"UI" : L"API")));
+                show_tray_notification(notifyTitle, info->name);
+
+                free(info);
+            }
+            return 0;
+        }
+
+        case WM_APP_ACTION_DONE: {
+            DeviceToggleResult* tr = (DeviceToggleResult*)lParam;
+            if (tr) {
+                ui_menu_set_device_busy(tr->deviceAddress, DEVICE_BUSY_NONE);
+
+                if (tr->outcome == TOGGLE_CONNECTED) g_batchHadConnect = true;
+                if (tr->outcome == TOGGLE_DISCONNECTED) g_batchHadDisconnect = true;
+                if (tr->outcome == TOGGLE_FAILED) {
+                    show_tray_notification(L"Action Failed", tr->message);
+                }
+
+                if (g_batchResults.count < MAX_BT_DEVICES) {
+                    g_batchResults.results[g_batchResults.count++] = *tr;
+                }
+                free(tr);
+            }
+            return 0;
+        }
+
+        case WM_APP_QUEUE_EMPTY: {
             set_busy_state(false);
-            InterlockedExchange(&g_isOperationBusy, 0);
+            ui_menu_clear_all_busy();
 
-            if (res) {
-                bool hasConnect = false;
-                bool hasDisconnect = false;
-                int failCount = 0;
+            // Media control
+            if (g_batchHadConnect && g_appState.sendMediaPlayOnConnect) {
+                Sleep(500);
+                media_send_toggle();
+            } else if (g_batchHadDisconnect && g_appState.sendMediaPauseOnDisconnect) {
+                media_send_toggle();
+            }
+            g_batchHadConnect = false;
+            g_batchHadDisconnect = false;
 
-                for (int i = 0; i < res->count; i++) {
-                    if (res->results[i].outcome == TOGGLE_CONNECTED) hasConnect = true;
-                    if (res->results[i].outcome == TOGGLE_DISCONNECTED) hasDisconnect = true;
-                    if (res->results[i].outcome == TOGGLE_FAILED) {
-                        failCount++;
-                        show_tray_notification(L"Action Failed", res->results[i].message);
-                    }
+            // Poll for settled state in background thread
+            if (g_batchResults.count > 0) {
+                BatchToggleResult* resCopy = (BatchToggleResult*)malloc(sizeof(BatchToggleResult));
+                if (resCopy) {
+                    *resCopy = g_batchResults;
+                    QueueUserWorkItem(worker_poll_settled, resCopy, WT_EXECUTEDEFAULT);
                 }
-
-                // Media control
-                if (hasConnect && g_appState.sendMediaPlayOnConnect) {
-                    Sleep(500);
-                    media_send_toggle();
-                }
-                if (hasDisconnect && g_appState.sendMediaPauseOnDisconnect) {
-                    media_send_toggle();
-                }
-
-                // Poll for settled state in background thread
-                QueueUserWorkItem(worker_poll_settled, res, WT_EXECUTEDEFAULT);
+                g_batchResults.count = 0;
             }
             return 0;
         }
@@ -420,6 +529,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
 
     g_hHiddenWnd = CreateWindowExW(0, wc.lpszClassName, L"QuickBTTrayMsg", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, hInstance, NULL);
 
+    queue_init();
+
     // Initialize UI windows
     ui_menu_init(hInstance, g_hHiddenWnd);
     ui_settings_init(hInstance, g_hHiddenWnd);
@@ -449,6 +560,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
 
     // Cleanup
     Shell_NotifyIconW(NIM_DELETE, &g_nid);
+    queue_cleanup();
     ui_menu_cleanup();
     ui_settings_cleanup();
     bt_cleanup();

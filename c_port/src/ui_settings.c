@@ -132,7 +132,7 @@ static void on_paint_settings(HWND hwnd) {
     if (g_hoveredHit == SET_HIT_NOTIFICATIONS) ui_draw_rounded_rect(memDC, &row1Rc, 4, theme.rowHover, CLR_INVALID);
     ui_draw_checkbox(memDC, 14, curY + 6, 14, g_appState.enableNotifications, &theme);
     RECT text1Rc = { 36, curY, width - 12, curY + OPTION_ROW_HEIGHT };
-    DrawTextW(memDC, L"Windows Notifications", -1, &text1Rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(memDC, L"Enable Notifications", -1, &text1Rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     curY += OPTION_ROW_HEIGHT;
 
     // Start with Windows

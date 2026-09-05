@@ -2,11 +2,13 @@
 #include "ui_common.h"
 #include <shellapi.h>
 #include <stdio.h>
+#include <math.h>
 
 #define WINDOW_WIDTH 300
 #define HEADER_HEIGHT 38
 #define ROW_HEIGHT 36
 #define FOOTER_HEIGHT 34
+#define TIMER_SPINNER 2001
 
 typedef enum {
     HIT_NONE,
@@ -22,6 +24,11 @@ typedef struct {
     int index;
 } HitTestResult;
 
+typedef struct {
+    wchar_t address[24];
+    DeviceBusyState state;
+} DeviceBusyEntry;
+
 static HWND g_hMenuWnd = NULL;
 static HWND g_hTrayWnd = NULL;
 static HFONT g_hFontNormal = NULL;
@@ -32,6 +39,10 @@ static HFONT g_hFontGear = NULL;
 static BluetoothAudioDevice g_devices[MAX_BT_DEVICES];
 static int g_deviceCount = 0;
 static bool g_isBusy = false;
+
+static DeviceBusyEntry g_busyDevices[MAX_BT_DEVICES];
+static int g_busyCount = 0;
+static int g_spinnerFrame = 0;
 
 static FnDeviceToggle g_fnToggle = NULL;
 static FnSettingsRequested g_fnSettings = NULL;
@@ -130,6 +141,37 @@ static void on_paint(HWND hwnd) {
     RECT titleRc = { 12, 8, width - 100, HEADER_HEIGHT };
     DrawTextW(memDC, L"BT Audio Devices", -1, &titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
+    // Header Spinner (when any action is busy)
+    if (g_isBusy) {
+        SIZE textSize;
+        GetTextExtentPoint32W(memDC, L"BT Audio Devices", 16, &textSize);
+        int cx = 12 + textSize.cx + 12;
+        int cy = HEADER_HEIGHT / 2 + 1;
+        double r = 5.5;
+        for (int k = 0; k < 8; k++) {
+            double angle = k * (3.141592653589793 / 4.0);
+            int px = cx + (int)(r * cos(angle) + 0.5);
+            int py = cy + (int)(r * sin(angle) + 0.5);
+            int dist = (k - g_spinnerFrame + 8) % 8;
+            COLORREF dotCol;
+            if (dist == 0) {
+                dotCol = theme.accent;
+            } else if (dist == 7 || dist == 6) {
+                dotCol = theme.subtext;
+            } else {
+                dotCol = theme.separator;
+            }
+            HBRUSH hDotBrush = CreateSolidBrush(dotCol);
+            HPEN hNullPen = (HPEN)GetStockObject(NULL_PEN);
+            HBRUSH hOldB = (HBRUSH)SelectObject(memDC, hDotBrush);
+            HPEN hOldP = (HPEN)SelectObject(memDC, hNullPen);
+            Ellipse(memDC, px - 1, py - 1, px + 2, py + 2);
+            SelectObject(memDC, hOldB);
+            SelectObject(memDC, hOldP);
+            DeleteObject(hDotBrush);
+        }
+    }
+
     // Gear Icon Button
     RECT gearRc = { width - 88, 5, width - 60, 33 };
     if (g_hoveredHit.type == HIT_GEAR) {
@@ -165,6 +207,9 @@ static void on_paint(HWND hwnd) {
             BluetoothAudioDevice* dev = &g_devices[i];
             int rowTop = curY + (i * ROW_HEIGHT);
 
+            DeviceBusyState busy = ui_menu_get_device_busy(dev->address);
+            bool isBusyAction = (busy != DEVICE_BUSY_NONE);
+
             // Row hover background on checkbox + text
             RECT checkTextRc = { 6, rowTop + 2, width - 96, rowTop + ROW_HEIGHT - 2 };
             if (g_hoveredHit.type == HIT_DEVICE_CHECK && g_hoveredHit.index == i) {
@@ -182,17 +227,32 @@ static void on_paint(HWND hwnd) {
             DrawTextW(memDC, dev->displayName, -1, &nameRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
             // Connection Status indicator (dot) - 13px
-            ui_draw_status_indicator(memDC, width - 112, rowTop + ((ROW_HEIGHT - 13) / 2), 13, dev->isConnected, &theme);
+            // If connecting, pulse status indicator between disconnected and connected colors!
+            bool showConnected = dev->isConnected;
+            if (busy == DEVICE_BUSY_CONNECTING) {
+                showConnected = (g_spinnerFrame % 2 == 0);
+            }
+            ui_draw_status_indicator(memDC, width - 112, rowTop + ((ROW_HEIGHT - 13) / 2), 13, showConnected, &theme);
 
-            // Action Button (Connect / Disconnect)
+            // Action Button
+            const wchar_t* btnLabel;
+            if (busy == DEVICE_BUSY_CONNECTING) {
+                btnLabel = L"Connecting...";
+            } else if (busy == DEVICE_BUSY_DISCONNECTING) {
+                btnLabel = L"Disconnecting...";
+            } else if (busy == DEVICE_BUSY_QUEUED) {
+                btnLabel = L"Queued...";
+            } else {
+                btnLabel = dev->isConnected ? L"Disconnect" : L"Connect";
+            }
+
             RECT btnRc = { width - 88, rowTop + 4, width - 10, rowTop + ROW_HEIGHT - 4 };
-            bool isBtnHover = (g_hoveredHit.type == HIT_DEVICE_BTN && g_hoveredHit.index == i);
+            bool isBtnHover = (!isBusyAction && g_hoveredHit.type == HIT_DEVICE_BTN && g_hoveredHit.index == i);
             COLORREF btnBg = isBtnHover ? theme.btnHover : theme.btnBg;
             ui_draw_rounded_rect(memDC, &btnRc, 4, btnBg, theme.btnBorder);
 
             SelectObject(memDC, g_hFontSmall);
-            SetTextColor(memDC, theme.fg);
-            const wchar_t* btnLabel = dev->isConnected ? L"Disconnect" : L"Connect";
+            SetTextColor(memDC, isBusyAction ? theme.subtext : theme.fg);
             DrawTextW(memDC, btnLabel, -1, &btnRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
         curY += g_deviceCount * ROW_HEIGHT;
@@ -241,6 +301,14 @@ static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             on_paint(hwnd);
             return 0;
 
+        case WM_TIMER:
+            if (wParam == TIMER_SPINNER) {
+                g_spinnerFrame = (g_spinnerFrame + 1) % 8;
+                InvalidateRect(hwnd, NULL, FALSE);
+                return 0;
+            }
+            break;
+
         case WM_MOUSEMOVE: {
             int x = (short)LOWORD(lParam);
             int y = (short)HIWORD(lParam);
@@ -287,7 +355,7 @@ static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit.type == HIT_DEVICE_BTN && hit.index >= 0 && hit.index < g_deviceCount) {
                 BluetoothAudioDevice* dev = &g_devices[hit.index];
-                if (g_fnToggle) {
+                if (ui_menu_get_device_busy(dev->address) == DEVICE_BUSY_NONE && g_fnToggle) {
                     g_fnToggle(dev->address, dev->name, !dev->isConnected);
                 }
             }
@@ -304,6 +372,12 @@ static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             return 0;
 
         case WM_SETCURSOR:
+            if (g_hoveredHit.type == HIT_DEVICE_BTN && g_hoveredHit.index >= 0 && g_hoveredHit.index < g_deviceCount) {
+                if (ui_menu_get_device_busy(g_devices[g_hoveredHit.index].address) != DEVICE_BUSY_NONE) {
+                    SetCursor(LoadCursorW(NULL, IDC_ARROW));
+                    return TRUE;
+                }
+            }
             if (g_hoveredHit.type != HIT_NONE) {
                 SetCursor(LoadCursorW(NULL, IDC_HAND));
                 return TRUE;
@@ -354,6 +428,7 @@ void ui_menu_init(HINSTANCE hInstance, HWND hTrayWnd) {
 
 void ui_menu_cleanup(void) {
     if (g_hMenuWnd) {
+        KillTimer(g_hMenuWnd, TIMER_SPINNER);
         DestroyWindow(g_hMenuWnd);
         g_hMenuWnd = NULL;
     }
@@ -373,6 +448,10 @@ void ui_menu_show(int anchorX, int anchorY) {
     int height = calculate_window_height();
     ui_position_window(g_hMenuWnd, anchorX, anchorY, WINDOW_WIDTH, height);
 
+    if (g_isBusy) {
+        SetTimer(g_hMenuWnd, TIMER_SPINNER, 100, NULL);
+    }
+
     ShowWindow(g_hMenuWnd, SW_SHOW);
     SetForegroundWindow(g_hMenuWnd);
     InvalidateRect(g_hMenuWnd, NULL, TRUE);
@@ -380,6 +459,7 @@ void ui_menu_show(int anchorX, int anchorY) {
 
 void ui_menu_hide(void) {
     if (g_hMenuWnd && IsWindowVisible(g_hMenuWnd)) {
+        KillTimer(g_hMenuWnd, TIMER_SPINNER);
         ShowWindow(g_hMenuWnd, SW_HIDE);
     }
 }
@@ -411,6 +491,63 @@ void ui_menu_update_devices(const BluetoothAudioDevice* devices, int count) {
 
 void ui_menu_set_busy(bool isBusy) {
     g_isBusy = isBusy;
+    if (g_hMenuWnd) {
+        if (isBusy && IsWindowVisible(g_hMenuWnd)) {
+            SetTimer(g_hMenuWnd, TIMER_SPINNER, 100, NULL);
+        } else if (!isBusy) {
+            KillTimer(g_hMenuWnd, TIMER_SPINNER);
+        }
+        if (IsWindowVisible(g_hMenuWnd)) {
+            InvalidateRect(g_hMenuWnd, NULL, FALSE);
+        }
+    }
+}
+
+DeviceBusyState ui_menu_get_device_busy(const wchar_t* address) {
+    if (!address || !address[0]) return DEVICE_BUSY_NONE;
+    for (int i = 0; i < g_busyCount; i++) {
+        if (_wcsicmp(g_busyDevices[i].address, address) == 0) {
+            return g_busyDevices[i].state;
+        }
+    }
+    return DEVICE_BUSY_NONE;
+}
+
+void ui_menu_set_device_busy(const wchar_t* address, DeviceBusyState state) {
+    if (!address || !address[0]) return;
+
+    int existingIdx = -1;
+    for (int i = 0; i < g_busyCount; i++) {
+        if (_wcsicmp(g_busyDevices[i].address, address) == 0) {
+            existingIdx = i;
+            break;
+        }
+    }
+
+    if (state == DEVICE_BUSY_NONE) {
+        if (existingIdx >= 0) {
+            for (int i = existingIdx; i < g_busyCount - 1; i++) {
+                g_busyDevices[i] = g_busyDevices[i + 1];
+            }
+            g_busyCount--;
+        }
+    } else {
+        if (existingIdx >= 0) {
+            g_busyDevices[existingIdx].state = state;
+        } else if (g_busyCount < MAX_BT_DEVICES) {
+            wcsncpy_s(g_busyDevices[g_busyCount].address, 24, address, _TRUNCATE);
+            g_busyDevices[g_busyCount].state = state;
+            g_busyCount++;
+        }
+    }
+
+    if (g_hMenuWnd && IsWindowVisible(g_hMenuWnd)) {
+        InvalidateRect(g_hMenuWnd, NULL, FALSE);
+    }
+}
+
+void ui_menu_clear_all_busy(void) {
+    g_busyCount = 0;
     if (g_hMenuWnd && IsWindowVisible(g_hMenuWnd)) {
         InvalidateRect(g_hMenuWnd, NULL, FALSE);
     }
