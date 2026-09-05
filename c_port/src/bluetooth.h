@@ -49,3 +49,4 @@ bool bt_get_connection_state(const wchar_t* address, bool* isConnected);
 ULONGLONG bt_parse_address(const wchar_t* address);
 void bt_format_address(ULONGLONG addr, wchar_t* outStr, size_t maxLen);
 
+

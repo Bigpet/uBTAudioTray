@@ -13,6 +13,7 @@ set(SOURCES
     src/theme.c
     src/media.c
     src/bluetooth.c
+    src/audio_state_notification.c
     src/ui_common.c
     src/ui_menu.c
     src/ui_settings.c

@@ -15,15 +15,17 @@
 #include "ui_common.h"
 #include "ui_menu.h"
 #include "ui_settings.h"
+#include "audio_state_notification.h"
 
 #define WM_APP_TRAYMSG        (WM_APP + 1)
 #define WM_APP_SCAN_DONE      (WM_APP + 2)
 #define WM_APP_ACTION_START   (WM_APP + 3)
 #define WM_APP_ACTION_DONE    (WM_APP + 4)
-#define WM_APP_QUEUE_EMPTY    (WM_APP + 5)
+#define WM_APP_QUEUE_EMPTY      (WM_APP + 5)
+#define WM_APP_ENDPOINT_CHANGED (WM_APP + 6)
 
-#define TIMER_BUSY_BLINK      1001
-#define TIMER_PERIODIC_SCAN   1002
+#define TIMER_BUSY_BLINK        1001
+#define TIMER_DEBOUNCE_SCAN     1002
 #define MAX_QUEUE_SIZE 32
 
 typedef struct {
@@ -444,12 +446,20 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             }
             return 0;
 
+        case WM_APP_ENDPOINT_CHANGED:
+            if (!g_isBusy) {
+                // Debounce rapid arrival/removal events across render/capture endpoints
+                SetTimer(hwnd, TIMER_DEBOUNCE_SCAN, 150, NULL);
+            }
+            return 0;
+
         case WM_TIMER:
             if (wParam == TIMER_BUSY_BLINK) {
                 g_blinkState = !g_blinkState;
                 g_nid.hIcon = g_blinkState ? g_hIconConnecting : g_hIconDefault;
                 Shell_NotifyIconW(NIM_MODIFY, &g_nid);
-            } else if (wParam == TIMER_PERIODIC_SCAN) {
+            } else if (wParam == TIMER_DEBOUNCE_SCAN) {
+                KillTimer(hwnd, TIMER_DEBOUNCE_SCAN);
                 if (!g_isBusy) {
                     POINT dummyPt = { 0, 0 };
                     queue_device_scan(false, dummyPt);
@@ -570,7 +580,8 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             return 0;
 
         case WM_DESTROY:
-            KillTimer(hwnd, TIMER_PERIODIC_SCAN);
+            KillTimer(hwnd, TIMER_DEBOUNCE_SCAN);
+            audio_state_notification_unregister();
             PostQuitMessage(0);
             return 0;
     }
@@ -640,8 +651,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     POINT dummyPt = { 0, 0 };
     queue_device_scan(false, dummyPt);
 
-    // Periodic background scan (every 4 seconds) to detect external connects/disconnects
-    SetTimer(g_hHiddenWnd, TIMER_PERIODIC_SCAN, 4000, NULL);
+    // Register for Core Audio endpoint change notifications (IMMNotificationClient)
+    audio_state_notification_register(g_hHiddenWnd, WM_APP_ENDPOINT_CHANGED);
 
     // Message loop
     MSG msg;
@@ -655,6 +666,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     queue_cleanup();
     ui_menu_cleanup();
     ui_settings_cleanup();
+    audio_state_notification_unregister();
     bt_cleanup();
     CoUninitialize();
 

@@ -55,6 +55,7 @@ cl.exe /nologo /O2 /W4 /wd4201 /GL /utf-8 /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_
     "%SRC_DIR%\theme.c" ^
     "%SRC_DIR%\media.c" ^
     "%SRC_DIR%\bluetooth.c" ^
+    "%SRC_DIR%\audio_state_notification.c" ^
     "%SRC_DIR%\ui_common.c" ^
     "%SRC_DIR%\ui_menu.c" ^
     "%SRC_DIR%\ui_settings.c" ^
