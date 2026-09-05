@@ -327,6 +327,12 @@ static void on_exit_requested(void) {
 }
 
 static void on_tray_left_click(void) {
+    if (ui_menu_is_visible() || ui_settings_is_visible()) {
+        ui_menu_hide();
+        ui_settings_hide();
+        return;
+    }
+
     if (g_appState.selectedCount == 0) {
         show_tray_notification(L"uBTAudioTray", L"No devices selected to Connect/Disconnect in the right-click menu.");
         return;
@@ -363,8 +369,9 @@ static void on_tray_right_click(void) {
     POINT pt;
     GetCursorPos(&pt);
 
-    if (ui_menu_is_visible()) {
+    if (ui_menu_is_visible() || ui_settings_is_visible()) {
         ui_menu_hide();
+        ui_settings_hide();
         return;
     }
 

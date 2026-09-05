@@ -1,4 +1,5 @@
 #include "ui_menu.h"
+#include "ui_settings.h"
 #include "ui_common.h"
 #include <shellapi.h>
 #include <stdio.h>
@@ -342,8 +343,15 @@ static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             if (hit.type == HIT_EXIT) {
                 if (g_fnExit) g_fnExit();
             } else if (hit.type == HIT_GEAR) {
-                g_suppressDeactivate = true;
-                if (g_fnSettings) g_fnSettings();
+                DWORD now = GetTickCount();
+                if (ui_settings_is_visible()) {
+                    ui_settings_hide();
+                } else if (now - ui_settings_get_last_hide_tick() < 250) {
+                    // Closed via deactivation from this click; stay closed
+                } else {
+                    g_suppressDeactivate = true;
+                    if (g_fnSettings) g_fnSettings();
+                }
             } else if (hit.type == HIT_SETTINGS_LINK) {
                 ShellExecuteW(NULL, L"open", L"ms-settings:bluetooth", NULL, NULL, SW_SHOWNORMAL);
                 ui_menu_hide();
@@ -364,7 +372,9 @@ static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 
         case WM_ACTIVATE:
             if (LOWORD(wParam) == WA_INACTIVE) {
-                if (!g_suppressDeactivate) {
+                HWND hActivating = (HWND)lParam;
+                HWND hSettings = ui_settings_get_hwnd();
+                if (!g_suppressDeactivate && hActivating != hSettings) {
                     ui_menu_hide();
                 }
                 g_suppressDeactivate = false;
@@ -462,6 +472,7 @@ void ui_menu_hide(void) {
         KillTimer(g_hMenuWnd, TIMER_SPINNER);
         ShowWindow(g_hMenuWnd, SW_HIDE);
     }
+    ui_settings_hide();
 }
 
 bool ui_menu_is_visible(void) {

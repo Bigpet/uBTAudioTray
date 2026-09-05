@@ -1,8 +1,11 @@
 #include "ui_settings.h"
+#include "ui_menu.h"
 #include "ui_common.h"
 #include "startup.h"
 #include <shellapi.h>
 #include <stdio.h>
+
+static DWORD g_lastHideTick = 0;
 
 #define SETTINGS_WIDTH 280
 #define SETTINGS_HEIGHT 255
@@ -335,7 +338,27 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LP
 
         case WM_ACTIVATE:
             if (LOWORD(wParam) == WA_INACTIVE) {
+                HWND hActivating = (HWND)lParam;
                 ui_settings_hide();
+
+                HWND hMenu = ui_menu_get_hwnd();
+                if (hMenu && IsWindowVisible(hMenu)) {
+                    bool focusOnMenu = false;
+                    if (hActivating == hMenu) {
+                        focusOnMenu = true;
+                    } else if (hActivating == NULL) {
+                        POINT pt;
+                        GetCursorPos(&pt);
+                        HWND hUnderCursor = WindowFromPoint(pt);
+                        if (hUnderCursor == hMenu || IsChild(hMenu, hUnderCursor)) {
+                            focusOnMenu = true;
+                        }
+                    }
+
+                    if (!focusOnMenu) {
+                        ui_menu_hide();
+                    }
+                }
             }
             return 0;
 
@@ -404,10 +427,15 @@ void ui_settings_show(int anchorX, int anchorY) {
 void ui_settings_hide(void) {
     if (g_hSettingsWnd && IsWindowVisible(g_hSettingsWnd)) {
         ShowWindow(g_hSettingsWnd, SW_HIDE);
+        g_lastHideTick = GetTickCount();
     }
 }
 
 bool ui_settings_is_visible(void) {
     return g_hSettingsWnd ? IsWindowVisible(g_hSettingsWnd) : false;
+}
+
+DWORD ui_settings_get_last_hide_tick(void) {
+    return g_lastHideTick;
 }
 

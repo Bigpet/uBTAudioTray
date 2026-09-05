@@ -11,4 +11,5 @@ HWND ui_settings_get_hwnd(void);
 void ui_settings_show(int anchorX, int anchorY);
 void ui_settings_hide(void);
 bool ui_settings_is_visible(void);
+DWORD ui_settings_get_last_hide_tick(void);
 
