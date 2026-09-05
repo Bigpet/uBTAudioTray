@@ -37,9 +37,10 @@ void app_state_init_default(AppState* state) {
     state->sendMediaPlayOnConnect = false;
     state->sendMediaPauseOnDisconnect = false;
     state->connectMethod = CONNECT_METHOD_KS;
+    state->disconnectMethod = DISCONNECT_METHOD_KS;
     state->useUiaConnect = false;
     state->useUiaDisconnect = false;
-    state->useHciDisconnect = true;
+    state->useHciDisconnect = false;
     state->selectedCount = 0;
 }
 
@@ -163,6 +164,23 @@ bool app_state_load(AppState* state) {
     }
     state->useUiaConnect = (state->connectMethod == CONNECT_METHOD_UI);
 
+    char disconnMethodStr[32] = { 0 };
+    if (parse_json_string(buffer, "DisconnectMethod", disconnMethodStr, sizeof(disconnMethodStr))) {
+        if (_stricmp(disconnMethodStr, "HCI") == 0) {
+            state->disconnectMethod = DISCONNECT_METHOD_HCI;
+        } else if (_stricmp(disconnMethodStr, "UI") == 0) {
+            state->disconnectMethod = DISCONNECT_METHOD_UI;
+        } else {
+            state->disconnectMethod = DISCONNECT_METHOD_KS;
+        }
+    } else {
+        if (state->useUiaDisconnect) state->disconnectMethod = DISCONNECT_METHOD_UI;
+        else if (state->useHciDisconnect) state->disconnectMethod = DISCONNECT_METHOD_HCI;
+        else state->disconnectMethod = DISCONNECT_METHOD_KS;
+    }
+    state->useUiaDisconnect = (state->disconnectMethod == DISCONNECT_METHOD_UI);
+    state->useHciDisconnect = (state->disconnectMethod == DISCONNECT_METHOD_HCI);
+
     free(buffer);
     return true;
 }
@@ -197,11 +215,16 @@ bool app_state_save(const AppState* state) {
     if (state->connectMethod == CONNECT_METHOD_API) connMethodStr = "API";
     else if (state->connectMethod == CONNECT_METHOD_UI) connMethodStr = "UI";
 
+    const char* disconnMethodStr = "KS";
+    if (state->disconnectMethod == DISCONNECT_METHOD_HCI) disconnMethodStr = "HCI";
+    else if (state->disconnectMethod == DISCONNECT_METHOD_UI) disconnMethodStr = "UI";
+
     offset += sprintf_s(buffer + offset, sizeof(buffer) - offset,
         "  \"EnableNotifications\": %s,\n"
         "  \"SendMediaPlayOnConnect\": %s,\n"
         "  \"SendMediaPauseOnDisconnect\": %s,\n"
         "  \"ConnectMethod\": \"%s\",\n"
+        "  \"DisconnectMethod\": \"%s\",\n"
         "  \"UseUiaConnect\": %s,\n"
         "  \"UseUiaDisconnect\": %s,\n"
         "  \"UseHciDisconnect\": %s\n"
@@ -210,9 +233,10 @@ bool app_state_save(const AppState* state) {
         state->sendMediaPlayOnConnect ? "true" : "false",
         state->sendMediaPauseOnDisconnect ? "true" : "false",
         connMethodStr,
+        disconnMethodStr,
         (state->connectMethod == CONNECT_METHOD_UI) ? "true" : "false",
-        state->useUiaDisconnect ? "true" : "false",
-        state->useHciDisconnect ? "true" : "false");
+        (state->disconnectMethod == DISCONNECT_METHOD_UI) ? "true" : "false",
+        (state->disconnectMethod == DISCONNECT_METHOD_HCI) ? "true" : "false");
 
     DWORD bytesWritten = 0;
     WriteFile(hFile, buffer, (DWORD)offset, &bytesWritten, NULL);

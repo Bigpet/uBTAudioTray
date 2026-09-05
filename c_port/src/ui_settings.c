@@ -19,6 +19,7 @@ typedef enum {
     SET_HIT_CONNECT_KS,
     SET_HIT_CONNECT_API,
     SET_HIT_CONNECT_UI,
+    SET_HIT_DISCONNECT_KS,
     SET_HIT_DISCONNECT_HCI,
     SET_HIT_DISCONNECT_UI
 } SettingsHitType;
@@ -70,10 +71,11 @@ static SettingsHitType hit_test_settings(int x, int y) {
     }
     curY += 28;
 
-    // Disconnect via: HCI (x: 95..145) / UI (x: 155..205)
+    // Disconnect via: KS (x: 100..150) / HCI (x: 154..206) / UI (x: 210..256)
     if (y >= curY && y < curY + 26) {
-        if (x >= 90 && x <= 145) return SET_HIT_DISCONNECT_HCI;
-        if (x >= 150 && x <= 205) return SET_HIT_DISCONNECT_UI;
+        if (x >= 100 && x <= 150) return SET_HIT_DISCONNECT_KS;
+        if (x >= 154 && x <= 206) return SET_HIT_DISCONNECT_HCI;
+        if (x >= 210 && x <= 256) return SET_HIT_DISCONNECT_UI;
     }
 
     return SET_HIT_NONE;
@@ -201,18 +203,25 @@ static void on_paint_settings(HWND hwnd) {
     RECT disconnLabelRc = { 12, curY, 96, curY + 24 };
     DrawTextW(memDC, L"Disconnect via:", -1, &disconnLabelRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
+    // KS radio
+    RECT dksRc = { 100, curY, 150, curY + 24 };
+    if (g_hoveredHit == SET_HIT_DISCONNECT_KS) ui_draw_rounded_rect(memDC, &dksRc, 4, theme.rowHover, CLR_INVALID);
+    ui_draw_radio(memDC, 104, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_KS, &theme);
+    RECT dksTextRc = { 123, curY, 150, curY + 24 };
+    DrawTextW(memDC, L"KS", -1, &dksTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
     // HCI radio
-    RECT hciRc = { 100, curY, 152, curY + 24 };
+    RECT hciRc = { 154, curY, 206, curY + 24 };
     if (g_hoveredHit == SET_HIT_DISCONNECT_HCI) ui_draw_rounded_rect(memDC, &hciRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 105, curY + 5, 14, g_appState.useHciDisconnect, &theme);
-    RECT hciTextRc = { 125, curY, 152, curY + 24 };
+    ui_draw_radio(memDC, 158, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_HCI, &theme);
+    RECT hciTextRc = { 177, curY, 206, curY + 24 };
     DrawTextW(memDC, L"HCI", -1, &hciTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // UI radio
-    RECT ui2Rc = { 156, curY, 208, curY + 24 };
+    RECT ui2Rc = { 210, curY, 256, curY + 24 };
     if (g_hoveredHit == SET_HIT_DISCONNECT_UI) ui_draw_rounded_rect(memDC, &ui2Rc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 161, curY + 5, 14, g_appState.useUiaDisconnect, &theme);
-    RECT ui2TextRc = { 181, curY, 208, curY + 24 };
+    ui_draw_radio(memDC, 214, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_UI, &theme);
+    RECT ui2TextRc = { 233, curY, 256, curY + 24 };
     DrawTextW(memDC, L"UI", -1, &ui2TextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // Outer border
@@ -302,12 +311,20 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 g_appState.useUiaConnect = true;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+            } else if (hit == SET_HIT_DISCONNECT_KS) {
+                g_appState.disconnectMethod = DISCONNECT_METHOD_KS;
+                g_appState.useHciDisconnect = false;
+                g_appState.useUiaDisconnect = false;
+                app_state_save(&g_appState);
+                InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_DISCONNECT_HCI) {
+                g_appState.disconnectMethod = DISCONNECT_METHOD_HCI;
                 g_appState.useHciDisconnect = true;
                 g_appState.useUiaDisconnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_DISCONNECT_UI) {
+                g_appState.disconnectMethod = DISCONNECT_METHOD_UI;
                 g_appState.useHciDisconnect = false;
                 g_appState.useUiaDisconnect = true;
                 app_state_save(&g_appState);

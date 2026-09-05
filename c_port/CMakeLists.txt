@@ -16,6 +16,7 @@ set(SOURCES
     src/ui_common.c
     src/ui_menu.c
     src/ui_settings.c
+    src/uia_connect.c
     res/resource.rc
 )
 
@@ -34,5 +35,6 @@ target_link_libraries(uBTAudioTray PRIVATE
     dwmapi
     comctl32
     ole32
+    oleaut32
 )
 

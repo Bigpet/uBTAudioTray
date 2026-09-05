@@ -12,6 +12,12 @@ typedef enum {
     CONNECT_METHOD_UI = 2
 } ConnectMethod;
 
+typedef enum {
+    DISCONNECT_METHOD_KS = 0,
+    DISCONNECT_METHOD_HCI = 1,
+    DISCONNECT_METHOD_UI = 2
+} DisconnectMethod;
+
 typedef struct {
     wchar_t selectedAddresses[MAX_SELECTED_DEVICES][MAC_ADDR_LEN];
     int selectedCount;
@@ -20,6 +26,7 @@ typedef struct {
     bool sendMediaPlayOnConnect;
     bool sendMediaPauseOnDisconnect;
     ConnectMethod connectMethod;
+    DisconnectMethod disconnectMethod;
     bool useUiaConnect;
     bool useUiaDisconnect;
     bool useHciDisconnect;

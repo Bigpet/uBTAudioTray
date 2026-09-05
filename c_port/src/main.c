@@ -11,6 +11,7 @@
 #include "theme.h"
 #include "media.h"
 #include "bluetooth.h"
+#include "uia_connect.h"
 #include "ui_common.h"
 #include "ui_menu.h"
 #include "ui_settings.h"
@@ -228,14 +229,18 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
                     if (item.isConnect) {
                         if (g_appState.connectMethod == CONNECT_METHOD_KS) {
                             bt_connect_device_ks(item.address, item.name, tr);
+                        } else if (g_appState.connectMethod == CONNECT_METHOD_UI) {
+                            uia_connect_device(item.name, item.address, tr);
                         } else {
                             bt_connect_device_api(item.address, item.name, tr);
                         }
                     } else {
-                        if (g_appState.useHciDisconnect) {
-                            bt_disconnect_device_hci(item.address, item.name, tr);
+                        if (g_appState.disconnectMethod == DISCONNECT_METHOD_KS) {
+                            bt_disconnect_device_ks(item.address, item.name, tr);
+                        } else if (g_appState.disconnectMethod == DISCONNECT_METHOD_UI) {
+                            uia_disconnect_device(item.name, item.address, tr);
                         } else {
-                            bt_disconnect_device_api(item.address, item.name, tr);
+                            bt_disconnect_device_hci(item.address, item.name, tr);
                         }
                     }
                     PostMessageW(g_hHiddenWnd, WM_APP_ACTION_DONE, 0, (LPARAM)tr);
@@ -428,9 +433,12 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                 if (g_appState.connectMethod == CONNECT_METHOD_API) connMethodStr = L"API";
                 else if (g_appState.connectMethod == CONNECT_METHOD_UI) connMethodStr = L"UI";
 
+                const wchar_t* disconnMethodStr = L"KS";
+                if (g_appState.disconnectMethod == DISCONNECT_METHOD_HCI) disconnMethodStr = L"HCI";
+                else if (g_appState.disconnectMethod == DISCONNECT_METHOD_UI) disconnMethodStr = L"UI";
+
                 swprintf_s(notifyTitle, 64, L"%s (%s)", info->isConnect ? L"Connecting" : L"Disconnecting",
-                    info->isConnect ? connMethodStr
-                                    : (g_appState.useHciDisconnect ? L"HCI" : (g_appState.useUiaDisconnect ? L"UI" : L"API")));
+                    info->isConnect ? connMethodStr : disconnMethodStr);
                 show_tray_notification(notifyTitle, info->name);
 
                 free(info);

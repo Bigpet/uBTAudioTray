@@ -58,10 +58,11 @@ cl.exe /nologo /O2 /W4 /wd4201 /GL /utf-8 /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_
     "%SRC_DIR%\ui_common.c" ^
     "%SRC_DIR%\ui_menu.c" ^
     "%SRC_DIR%\ui_settings.c" ^
+    "%SRC_DIR%\uia_connect.c" ^
     "%SRC_DIR%\main.c" ^
     "%BIN_DIR%\resource.res" ^
     /link /SUBSYSTEM:WINDOWS /INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF ^
-    user32.lib gdi32.lib shell32.lib advapi32.lib bthprops.lib dwmapi.lib comctl32.lib ole32.lib
+    user32.lib gdi32.lib shell32.lib advapi32.lib bthprops.lib dwmapi.lib comctl32.lib ole32.lib oleaut32.lib
 
 if %ERRORLEVEL% equ 0 (
     echo.
