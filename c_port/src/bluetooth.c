@@ -259,6 +259,36 @@ static int get_active_bluetooth_audio_endpoints(ActiveAudioEndpoint* outList, in
     return activeCount;
 }
 
+static bool is_device_audio_active(const wchar_t* address, const wchar_t* name) {
+    ActiveAudioEndpoint activeEndpoints[32];
+    int count = get_active_bluetooth_audio_endpoints(activeEndpoints, 32);
+    if (count <= 0) return false;
+
+    wchar_t cleanMac[24] = { 0 };
+    if (address) {
+        int idx = 0;
+        for (int i = 0; address[i] && idx < 23; i++) {
+            if (address[i] != L':') {
+                cleanMac[idx++] = (wchar_t)towlower(address[i]);
+            }
+        }
+        cleanMac[idx] = L'\0';
+    }
+
+    for (int i = 0; i < count; i++) {
+        if (cleanMac[0] != L'\0' && wcsstr(activeEndpoints[i].deviceId, cleanMac) != NULL) {
+            return true;
+        }
+        if (name && name[0] != L'\0' && activeEndpoints[i].friendlyName[0] != L'\0') {
+            if (wcsstr(activeEndpoints[i].friendlyName, name) != NULL ||
+                wcsstr(name, activeEndpoints[i].friendlyName) != NULL) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 int bt_discover_audio_devices(BluetoothAudioDevice* outDevices, int maxDevices) {
     bt_init();
     if (!outDevices || maxDevices <= 0) return 0;
@@ -731,11 +761,44 @@ static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, boo
     if (mustUninit) CoUninitialize();
 
     if (ksSuccesses > 0) {
-        if (result) {
-            result->outcome = isConnect ? TOGGLE_CONNECTED : TOGGLE_DISCONNECTED;
-            wcscpy_s(result->message, 256, isConnect ? L"Reconnected via KS audio driver." : L"Disconnected via KS audio driver.");
+        if (isConnect) {
+            // Keep busy state and flashing LED active while connection is being verified!
+            // Poll for audio endpoint to become DEVICE_STATE_ACTIVE (up to ~3.6 seconds)
+            bool verified = false;
+            for (int poll = 0; poll < 24; poll++) {
+                Sleep(150);
+                if (is_device_audio_active(address, name)) {
+                    verified = true;
+                    break;
+                }
+            }
+
+            if (verified) {
+                if (result) {
+                    result->outcome = TOGGLE_CONNECTED;
+                    wcscpy_s(result->message, 256, L"Connected via KS audio driver.");
+                }
+                return true;
+            }
+
+            // If KS reconnect didn't activate the audio endpoint within timeout,
+            // fallback to Win32 API to complete the connection
+            return bt_connect_device_api(address, name, result);
+        } else {
+            // For disconnect: verify audio endpoint drops from active (up to ~1.2 seconds)
+            for (int poll = 0; poll < 8; poll++) {
+                if (!is_device_audio_active(address, name)) {
+                    break;
+                }
+                Sleep(150);
+            }
+
+            if (result) {
+                result->outcome = TOGGLE_DISCONNECTED;
+                wcscpy_s(result->message, 256, L"Disconnected via KS audio driver.");
+            }
+            return true;
         }
-        return true;
     }
 
     // If no KS command could be sent or all returned failure, fallback to Win32 API
