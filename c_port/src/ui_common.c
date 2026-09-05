@@ -149,8 +149,12 @@ void ui_draw_radio(HDC hdc, int x, int y, int size, bool isChecked, const ThemeC
 
 void ui_draw_status_indicator(HDC hdc, int x, int y, int size, bool isConnected, const ThemeColors* theme) {
     COLORREF col = isConnected ? theme->statusConnected : theme->statusDisconnected;
+    COLORREF borderCol = isConnected
+        ? (theme->isDark ? RGB(35, 160, 90) : RGB(30, 140, 75))
+        : (theme->isDark ? RGB(90, 90, 90) : RGB(180, 180, 180));
+
     HBRUSH hBrush = CreateSolidBrush(col);
-    HPEN hPen = (HPEN)GetStockObject(NULL_PEN);
+    HPEN hPen = CreatePen(PS_SOLID, 1, borderCol);
 
     HBRUSH hOldBrush = (HBRUSH)SelectObject(hdc, hBrush);
     HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
@@ -160,5 +164,6 @@ void ui_draw_status_indicator(HDC hdc, int x, int y, int size, bool isConnected,
     SelectObject(hdc, hOldBrush);
     SelectObject(hdc, hOldPen);
     DeleteObject(hBrush);
+    DeleteObject(hPen);
 }
 

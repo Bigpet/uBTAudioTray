@@ -27,6 +27,7 @@ static HWND g_hTrayWnd = NULL;
 static HFONT g_hFontNormal = NULL;
 static HFONT g_hFontBold = NULL;
 static HFONT g_hFontSmall = NULL;
+static HFONT g_hFontGear = NULL;
 
 static BluetoothAudioDevice g_devices[MAX_BT_DEVICES];
 static int g_deviceCount = 0;
@@ -58,8 +59,8 @@ static HitTestResult hit_test(int x, int y) {
             res.type = HIT_EXIT;
             return res;
         }
-        // Gear button: ~width - 86 .. width - 60
-        if (x >= width - 88 && x <= width - 62) {
+        // Gear button: ~width - 88 .. width - 60
+        if (x >= width - 88 && x <= width - 60) {
             res.type = HIT_GEAR;
             return res;
         }
@@ -130,11 +131,11 @@ static void on_paint(HWND hwnd) {
     DrawTextW(memDC, L"BT Audio Devices", -1, &titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // Gear Icon Button
-    RECT gearRc = { width - 88, 7, width - 62, 31 };
+    RECT gearRc = { width - 88, 5, width - 60, 33 };
     if (g_hoveredHit.type == HIT_GEAR) {
         ui_draw_rounded_rect(memDC, &gearRc, 4, theme.rowHover, theme.separator);
     }
-    SelectObject(memDC, g_hFontNormal);
+    SelectObject(memDC, g_hFontGear);
     DrawTextW(memDC, L"\u2699", -1, &gearRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     // Exit Button
@@ -180,8 +181,8 @@ static void on_paint(HWND hwnd) {
             RECT nameRc = { 34, rowTop, width - 120, rowTop + ROW_HEIGHT };
             DrawTextW(memDC, dev->displayName, -1, &nameRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
-            // Connection Status indicator (dot)
-            ui_draw_status_indicator(memDC, width - 110, rowTop + ((ROW_HEIGHT - 8) / 2), 8, dev->isConnected, &theme);
+            // Connection Status indicator (dot) - 13px
+            ui_draw_status_indicator(memDC, width - 112, rowTop + ((ROW_HEIGHT - 13) / 2), 13, dev->isConnected, &theme);
 
             // Action Button (Connect / Disconnect)
             RECT btnRc = { width - 88, rowTop + 4, width - 10, rowTop + ROW_HEIGHT - 4 };
@@ -339,6 +340,16 @@ void ui_menu_init(HINSTANCE hInstance, HWND hTrayWnd) {
     g_hFontNormal = ui_get_font(-12, false);
     g_hFontBold   = ui_get_font(-12, true);
     g_hFontSmall  = ui_get_font(-11, false);
+    g_hFontGear   = CreateFontW(
+        -16, 0, 0, 0,
+        FW_NORMAL,
+        FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE,
+        L"Segoe UI Symbol");
 }
 
 void ui_menu_cleanup(void) {
@@ -349,6 +360,7 @@ void ui_menu_cleanup(void) {
     if (g_hFontNormal) { DeleteObject(g_hFontNormal); g_hFontNormal = NULL; }
     if (g_hFontBold)   { DeleteObject(g_hFontBold);   g_hFontBold = NULL; }
     if (g_hFontSmall)  { DeleteObject(g_hFontSmall);  g_hFontSmall = NULL; }
+    if (g_hFontGear)   { DeleteObject(g_hFontGear);   g_hFontGear = NULL; }
 }
 
 HWND ui_menu_get_hwnd(void) {
