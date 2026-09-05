@@ -1,6 +1,4 @@
 # Ignore build and publish outputs
-publish/
-publish-trimmed/
 bin/
 obj/
 artifacts/
@@ -9,3 +7,4 @@ Debug/
 *.user
 *.suo
 *.vs/
+build/
