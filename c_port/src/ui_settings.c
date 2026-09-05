@@ -16,6 +16,7 @@ typedef enum {
     SET_HIT_STARTUP,
     SET_HIT_MEDIA_PLAY,
     SET_HIT_MEDIA_PAUSE,
+    SET_HIT_CONNECT_KS,
     SET_HIT_CONNECT_API,
     SET_HIT_CONNECT_UI,
     SET_HIT_DISCONNECT_HCI,
@@ -61,10 +62,11 @@ static SettingsHitType hit_test_settings(int x, int y) {
     // Separator
     curY += 8;
 
-    // Connect via: API (x: 95..145) / UI (x: 155..205)
+    // Connect via: KS (x: 90..142) / API (x: 146..200) / UI (x: 204..252)
     if (y >= curY && y < curY + 26) {
-        if (x >= 90 && x <= 145) return SET_HIT_CONNECT_API;
-        if (x >= 150 && x <= 205) return SET_HIT_CONNECT_UI;
+        if (x >= 90 && x <= 142) return SET_HIT_CONNECT_KS;
+        if (x >= 146 && x <= 200) return SET_HIT_CONNECT_API;
+        if (x >= 204 && x <= 252) return SET_HIT_CONNECT_UI;
     }
     curY += 28;
 
@@ -172,18 +174,25 @@ static void on_paint_settings(HWND hwnd) {
     RECT connLabelRc = { 12, curY, 86, curY + 24 };
     DrawTextW(memDC, L"Connect via:", -1, &connLabelRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
+    // KS radio
+    RECT ksRc = { 90, curY, 142, curY + 24 };
+    if (g_hoveredHit == SET_HIT_CONNECT_KS) ui_draw_rounded_rect(memDC, &ksRc, 4, theme.rowHover, CLR_INVALID);
+    ui_draw_radio(memDC, 94, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_KS, &theme);
+    RECT ksTextRc = { 113, curY, 142, curY + 24 };
+    DrawTextW(memDC, L"KS", -1, &ksTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
     // API radio
-    RECT apiRc = { 90, curY, 142, curY + 24 };
+    RECT apiRc = { 146, curY, 200, curY + 24 };
     if (g_hoveredHit == SET_HIT_CONNECT_API) ui_draw_rounded_rect(memDC, &apiRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 95, curY + 5, 14, !g_appState.useUiaConnect, &theme);
-    RECT apiTextRc = { 115, curY, 142, curY + 24 };
+    ui_draw_radio(memDC, 150, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_API, &theme);
+    RECT apiTextRc = { 169, curY, 200, curY + 24 };
     DrawTextW(memDC, L"API", -1, &apiTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // UI radio
-    RECT uiRc = { 146, curY, 198, curY + 24 };
+    RECT uiRc = { 204, curY, 252, curY + 24 };
     if (g_hoveredHit == SET_HIT_CONNECT_UI) ui_draw_rounded_rect(memDC, &uiRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 151, curY + 5, 14, g_appState.useUiaConnect, &theme);
-    RECT uiTextRc = { 171, curY, 198, curY + 24 };
+    ui_draw_radio(memDC, 208, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_UI, &theme);
+    RECT uiTextRc = { 227, curY, 252, curY + 24 };
     DrawTextW(memDC, L"UI", -1, &uiTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     curY += 28;
@@ -278,11 +287,18 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 g_appState.sendMediaPauseOnDisconnect = !g_appState.sendMediaPauseOnDisconnect;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+            } else if (hit == SET_HIT_CONNECT_KS) {
+                g_appState.connectMethod = CONNECT_METHOD_KS;
+                g_appState.useUiaConnect = false;
+                app_state_save(&g_appState);
+                InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_CONNECT_API) {
+                g_appState.connectMethod = CONNECT_METHOD_API;
                 g_appState.useUiaConnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_CONNECT_UI) {
+                g_appState.connectMethod = CONNECT_METHOD_UI;
                 g_appState.useUiaConnect = true;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);

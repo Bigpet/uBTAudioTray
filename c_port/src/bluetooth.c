@@ -2,6 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wctype.h>
+#include <mmdeviceapi.h>
+#include <devicetopology.h>
+#include <ks.h>
+#include <ksmedia.h>
+#include <ksproxy.h>
+#include <functiondiscoverykeys_devpkey.h>
 
 #define IOCTL_BTH_DISCONNECT_DEVICE 0x41000c
 #define CACHE_TTL_MS 45000
@@ -10,6 +17,24 @@
 
 static const GUID GUID_Handsfree = { 0x0000111e, 0x0000, 0x1000, { 0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb } };
 static const GUID GUID_AudioSink = { 0x0000110b, 0x0000, 0x1000, { 0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb } };
+
+static const GUID CLSID_MMDeviceEnumerator_Bt = { 0xBCDE0395, 0xE52F, 0x467C, { 0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E } };
+static const GUID IID_IMMDeviceEnumerator_Bt  = { 0xA95664D2, 0x9614, 0x4F35, { 0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6 } };
+static const GUID IID_IDeviceTopology_Bt      = { 0x2A07407E, 0x6497, 0x4A18, { 0x97, 0x87, 0x32, 0xF7, 0x9B, 0xD0, 0xD9, 0x8F } };
+static const GUID IID_IPart_Bt                = { 0xAE2DE0E4, 0x5BCA, 0x4F2D, { 0xAA, 0x46, 0x5D, 0x13, 0xF8, 0xFD, 0xB3, 0xA9 } };
+static const GUID IID_IKsControl_Bt           = { 0x28F54685, 0x06FD, 0x11D2, { 0xB2, 0x7A, 0x00, 0xA0, 0xC9, 0x22, 0x31, 0x96 } };
+static const GUID KSPROPSETID_BtAudio_Bt      = { 0x7FA06C40, 0xB8F6, 0x4C7E, { 0x85, 0x56, 0xE8, 0xC3, 0x3A, 0x12, 0xE5, 0x4D } };
+
+static const PROPERTYKEY PKEY_Device_FriendlyName_Bt = {
+    { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 14
+};
+
+#ifndef KSPROPERTY_ONESHOT_RECONNECT
+#define KSPROPERTY_ONESHOT_RECONNECT 0
+#endif
+#ifndef KSPROPERTY_ONESHOT_DISCONNECT
+#define KSPROPERTY_ONESHOT_DISCONNECT 1
+#endif
 
 typedef struct {
     wchar_t address[24];
@@ -412,5 +437,185 @@ bool bt_disconnect_device_hci(const wchar_t* address, const wchar_t* name, Devic
         wcscpy_s(result->message, 256, L"Disconnected via HCI IOCTL.");
     }
     return true;
+}
+
+static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, bool isConnect, DeviceToggleResult* result) {
+    bt_init();
+    if (result) {
+        wcscpy_s(result->deviceName, 248, name ? name : address);
+        wcscpy_s(result->deviceAddress, 24, address);
+        result->outcome = TOGGLE_FAILED;
+        wcscpy_s(result->message, 256, L"Unknown error.");
+    }
+
+    // Build clean lowercase MAC without colons
+    wchar_t cleanMac[24] = { 0 };
+    if (address) {
+        int idx = 0;
+        for (int i = 0; address[i] && idx < 23; i++) {
+            wchar_t c = address[i];
+            if ((c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f') || (c >= L'A' && c <= L'F')) {
+                cleanMac[idx++] = (wchar_t)towlower(c);
+            }
+        }
+        cleanMac[idx] = L'\0';
+    }
+
+    HRESULT hrCo = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    bool mustUninit = (hrCo == S_OK || hrCo == S_FALSE);
+
+    IMMDeviceEnumerator* pEnumerator = NULL;
+    HRESULT hr = CoCreateInstance(&CLSID_MMDeviceEnumerator_Bt, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator_Bt, (void**)&pEnumerator);
+    if (FAILED(hr) || !pEnumerator) {
+        if (mustUninit) CoUninitialize();
+        if (isConnect) return bt_connect_device_api(address, name, result);
+        else return bt_disconnect_device_api(address, name, result);
+    }
+
+    IMMDeviceCollection* pDevices = NULL;
+    hr = pEnumerator->lpVtbl->EnumAudioEndpoints(pEnumerator, eAll, DEVICE_STATEMASK_ALL, &pDevices);
+    if (FAILED(hr) || !pDevices) {
+        pEnumerator->lpVtbl->Release(pEnumerator);
+        if (mustUninit) CoUninitialize();
+        if (isConnect) return bt_connect_device_api(address, name, result);
+        else return bt_disconnect_device_api(address, name, result);
+    }
+
+    UINT devCount = 0;
+    pDevices->lpVtbl->GetCount(pDevices, &devCount);
+
+    int ksCommandsSent = 0;
+    int ksSuccesses = 0;
+
+    for (UINT i = 0; i < devCount; i++) {
+        IMMDevice* pDevice = NULL;
+        if (FAILED(pDevices->lpVtbl->Item(pDevices, i, &pDevice)) || !pDevice) continue;
+
+        WCHAR friendlyName[256] = L"";
+        IPropertyStore* pPropStore = NULL;
+        if (SUCCEEDED(pDevice->lpVtbl->OpenPropertyStore(pDevice, STGM_READ, &pPropStore)) && pPropStore) {
+            PROPVARIANT pv;
+            PropVariantInit(&pv);
+            if (SUCCEEDED(pPropStore->lpVtbl->GetValue(pPropStore, &PKEY_Device_FriendlyName_Bt, &pv)) && pv.vt == VT_LPWSTR && pv.pwszVal) {
+                wcsncpy_s(friendlyName, 256, pv.pwszVal, _TRUNCATE);
+            }
+            PropVariantClear(&pv);
+            pPropStore->lpVtbl->Release(pPropStore);
+        }
+
+        IDeviceTopology* pTopology = NULL;
+        hr = pDevice->lpVtbl->Activate(pDevice, &IID_IDeviceTopology_Bt, CLSCTX_ALL, NULL, (void**)&pTopology);
+        if (SUCCEEDED(hr) && pTopology) {
+            UINT connCount = 0;
+            pTopology->lpVtbl->GetConnectorCount(pTopology, &connCount);
+            for (UINT c = 0; c < connCount; c++) {
+                IConnector* pConnector = NULL;
+                if (FAILED(pTopology->lpVtbl->GetConnector(pTopology, c, &pConnector)) || !pConnector) continue;
+
+                IConnector* pOtherConnector = NULL;
+                hr = pConnector->lpVtbl->GetConnectedTo(pConnector, &pOtherConnector);
+                if (SUCCEEDED(hr) && pOtherConnector) {
+                    IPart* pPart = NULL;
+                    hr = pOtherConnector->lpVtbl->QueryInterface(pOtherConnector, &IID_IPart_Bt, (void**)&pPart);
+                    if (SUCCEEDED(hr) && pPart) {
+                        IDeviceTopology* pOtherTopology = NULL;
+                        hr = pPart->lpVtbl->GetTopologyObject(pPart, &pOtherTopology);
+                        if (SUCCEEDED(hr) && pOtherTopology) {
+                            LPWSTR otherDeviceId = NULL;
+                            hr = pOtherTopology->lpVtbl->GetDeviceId(pOtherTopology, &otherDeviceId);
+                            if (SUCCEEDED(hr) && otherDeviceId) {
+                                // Check if this is a Bluetooth audio device
+                                bool isBt = (_wcsnicmp(otherDeviceId, L"{2}.\\\\?\\bth", 10) == 0 ||
+                                             wcsstr(otherDeviceId, L"bthenum") != NULL ||
+                                             wcsstr(otherDeviceId, L"bthhfenum") != NULL ||
+                                             wcsstr(otherDeviceId, L"BTH") != NULL);
+                                if (isBt) {
+                                    bool matchesDevice = false;
+
+                                    // 1. MAC address match in device ID
+                                    if (cleanMac[0] != L'\0') {
+                                        wchar_t lowerOtherId[512];
+                                        wcsncpy_s(lowerOtherId, 512, otherDeviceId, _TRUNCATE);
+                                        for (int k = 0; lowerOtherId[k]; k++) {
+                                            lowerOtherId[k] = (wchar_t)towlower(lowerOtherId[k]);
+                                        }
+                                        if (wcsstr(lowerOtherId, cleanMac) != NULL) {
+                                            matchesDevice = true;
+                                        }
+                                    }
+
+                                    // 2. Friendly name match fallback
+                                    if (!matchesDevice && name && name[0] != L'\0' && friendlyName[0] != L'\0') {
+                                        if (wcsstr(friendlyName, name) != NULL || wcsstr(name, friendlyName) != NULL) {
+                                            matchesDevice = true;
+                                        }
+                                    }
+
+                                    if (matchesDevice) {
+                                        IMMDevice* pOtherDevice = NULL;
+                                        hr = pEnumerator->lpVtbl->GetDevice(pEnumerator, otherDeviceId, &pOtherDevice);
+                                        if (SUCCEEDED(hr) && pOtherDevice) {
+                                            IKsControl* pKsControl = NULL;
+                                            hr = pOtherDevice->lpVtbl->Activate(pOtherDevice, &IID_IKsControl_Bt, CLSCTX_ALL, NULL, (void**)&pKsControl);
+                                            if (SUCCEEDED(hr) && pKsControl) {
+                                                KSPROPERTY prop;
+                                                memset(&prop, 0, sizeof(prop));
+                                                prop.Set = KSPROPSETID_BtAudio_Bt;
+                                                prop.Id = isConnect ? KSPROPERTY_ONESHOT_RECONNECT : KSPROPERTY_ONESHOT_DISCONNECT;
+                                                prop.Flags = KSPROPERTY_TYPE_GET;
+
+                                                ULONG bytesReturned = 0;
+                                                HRESULT ksHr = pKsControl->lpVtbl->KsProperty(pKsControl, &prop, sizeof(prop), NULL, 0, &bytesReturned);
+                                                ksCommandsSent++;
+                                                if (SUCCEEDED(ksHr)) {
+                                                    ksSuccesses++;
+                                                }
+                                                pKsControl->lpVtbl->Release(pKsControl);
+                                            }
+                                            pOtherDevice->lpVtbl->Release(pOtherDevice);
+                                        }
+                                    }
+                                }
+                                CoTaskMemFree(otherDeviceId);
+                            }
+                            pOtherTopology->lpVtbl->Release(pOtherTopology);
+                        }
+                        pPart->lpVtbl->Release(pPart);
+                    }
+                    pOtherConnector->lpVtbl->Release(pOtherConnector);
+                }
+                pConnector->lpVtbl->Release(pConnector);
+            }
+            pTopology->lpVtbl->Release(pTopology);
+        }
+        pDevice->lpVtbl->Release(pDevice);
+    }
+
+    pDevices->lpVtbl->Release(pDevices);
+    pEnumerator->lpVtbl->Release(pEnumerator);
+    if (mustUninit) CoUninitialize();
+
+    if (ksSuccesses > 0) {
+        if (result) {
+            result->outcome = isConnect ? TOGGLE_CONNECTED : TOGGLE_DISCONNECTED;
+            wcscpy_s(result->message, 256, isConnect ? L"Reconnected via KS audio driver." : L"Disconnected via KS audio driver.");
+        }
+        return true;
+    }
+
+    // If no KS command could be sent or all returned failure, fallback to Win32 API
+    if (isConnect) {
+        return bt_connect_device_api(address, name, result);
+    } else {
+        return bt_disconnect_device_api(address, name, result);
+    }
+}
+
+bool bt_connect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result) {
+    return bt_toggle_device_ks(address, name, true, result);
+}
+
+bool bt_disconnect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result) {
+    return bt_toggle_device_ks(address, name, false, result);
 }
 

@@ -36,6 +36,7 @@ void app_state_init_default(AppState* state) {
     state->enableNotifications = true;
     state->sendMediaPlayOnConnect = false;
     state->sendMediaPauseOnDisconnect = false;
+    state->connectMethod = CONNECT_METHOD_KS;
     state->useUiaConnect = false;
     state->useUiaDisconnect = false;
     state->useHciDisconnect = true;
@@ -51,6 +52,25 @@ static bool parse_json_bool(const char* json, const char* key, bool defaultVal) 
     if (_strnicmp(pos, "true", 4) == 0) return true;
     if (_strnicmp(pos, "false", 5) == 0) return false;
     return defaultVal;
+}
+
+static bool parse_json_string(const char* json, const char* key, char* outVal, size_t maxLen) {
+    if (!outVal || maxLen == 0) return false;
+    outVal[0] = '\0';
+    const char* pos = strstr(json, key);
+    if (!pos) return false;
+    pos = strchr(pos, ':');
+    if (!pos) return false;
+    pos = strchr(pos, '\"');
+    if (!pos) return false;
+    pos++;
+    const char* end = strchr(pos, '\"');
+    if (!end) return false;
+    size_t len = (size_t)(end - pos);
+    if (len >= maxLen) len = maxLen - 1;
+    memcpy(outVal, pos, len);
+    outVal[len] = '\0';
+    return true;
 }
 
 static void parse_json_string_array(const char* json, const char* key, wchar_t outArray[MAX_SELECTED_DEVICES][MAC_ADDR_LEN], int* outCount) {
@@ -129,6 +149,20 @@ bool app_state_load(AppState* state) {
     state->useUiaDisconnect = parse_json_bool(buffer, "UseUiaDisconnect", false);
     state->useHciDisconnect = parse_json_bool(buffer, "UseHciDisconnect", true);
 
+    char methodStr[32] = { 0 };
+    if (parse_json_string(buffer, "ConnectMethod", methodStr, sizeof(methodStr))) {
+        if (_stricmp(methodStr, "API") == 0) {
+            state->connectMethod = CONNECT_METHOD_API;
+        } else if (_stricmp(methodStr, "UI") == 0) {
+            state->connectMethod = CONNECT_METHOD_UI;
+        } else {
+            state->connectMethod = CONNECT_METHOD_KS;
+        }
+    } else {
+        state->connectMethod = state->useUiaConnect ? CONNECT_METHOD_UI : CONNECT_METHOD_KS;
+    }
+    state->useUiaConnect = (state->connectMethod == CONNECT_METHOD_UI);
+
     free(buffer);
     return true;
 }
@@ -159,10 +193,15 @@ bool app_state_save(const AppState* state) {
     }
     offset += sprintf_s(buffer + offset, sizeof(buffer) - offset, "  ],\n");
 
+    const char* connMethodStr = "KS";
+    if (state->connectMethod == CONNECT_METHOD_API) connMethodStr = "API";
+    else if (state->connectMethod == CONNECT_METHOD_UI) connMethodStr = "UI";
+
     offset += sprintf_s(buffer + offset, sizeof(buffer) - offset,
         "  \"EnableNotifications\": %s,\n"
         "  \"SendMediaPlayOnConnect\": %s,\n"
         "  \"SendMediaPauseOnDisconnect\": %s,\n"
+        "  \"ConnectMethod\": \"%s\",\n"
         "  \"UseUiaConnect\": %s,\n"
         "  \"UseUiaDisconnect\": %s,\n"
         "  \"UseHciDisconnect\": %s\n"
@@ -170,7 +209,8 @@ bool app_state_save(const AppState* state) {
         state->enableNotifications ? "true" : "false",
         state->sendMediaPlayOnConnect ? "true" : "false",
         state->sendMediaPauseOnDisconnect ? "true" : "false",
-        state->useUiaConnect ? "true" : "false",
+        connMethodStr,
+        (state->connectMethod == CONNECT_METHOD_UI) ? "true" : "false",
         state->useUiaDisconnect ? "true" : "false",
         state->useHciDisconnect ? "true" : "false");
 

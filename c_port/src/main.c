@@ -226,7 +226,11 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
                 if (tr) {
                     memset(tr, 0, sizeof(DeviceToggleResult));
                     if (item.isConnect) {
-                        bt_connect_device_api(item.address, item.name, tr);
+                        if (g_appState.connectMethod == CONNECT_METHOD_KS) {
+                            bt_connect_device_ks(item.address, item.name, tr);
+                        } else {
+                            bt_connect_device_api(item.address, item.name, tr);
+                        }
                     } else {
                         if (g_appState.useHciDisconnect) {
                             bt_disconnect_device_hci(item.address, item.name, tr);
@@ -420,8 +424,12 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                 ui_menu_set_device_busy(info->address, info->isConnect ? DEVICE_BUSY_CONNECTING : DEVICE_BUSY_DISCONNECTING);
 
                 wchar_t notifyTitle[64];
+                const wchar_t* connMethodStr = L"KS";
+                if (g_appState.connectMethod == CONNECT_METHOD_API) connMethodStr = L"API";
+                else if (g_appState.connectMethod == CONNECT_METHOD_UI) connMethodStr = L"UI";
+
                 swprintf_s(notifyTitle, 64, L"%s (%s)", info->isConnect ? L"Connecting" : L"Disconnecting",
-                    info->isConnect ? (g_appState.useUiaConnect ? L"UI" : L"API")
+                    info->isConnect ? connMethodStr
                                     : (g_appState.useHciDisconnect ? L"HCI" : (g_appState.useUiaDisconnect ? L"UI" : L"API")));
                 show_tray_notification(notifyTitle, info->name);
 

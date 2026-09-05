@@ -39,8 +39,10 @@ int bt_discover_audio_devices(BluetoothAudioDevice* outDevices, int maxDevices);
 
 // Connection operations
 bool bt_connect_device_api(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
+bool bt_connect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
 bool bt_disconnect_device_api(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
 bool bt_disconnect_device_hci(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
+bool bt_disconnect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
 
 // Connection check
 bool bt_get_connection_state(const wchar_t* address, bool* isConnected);

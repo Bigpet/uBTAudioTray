@@ -6,6 +6,12 @@
 #define MAX_SELECTED_DEVICES 32
 #define MAC_ADDR_LEN 24
 
+typedef enum {
+    CONNECT_METHOD_KS = 0,
+    CONNECT_METHOD_API = 1,
+    CONNECT_METHOD_UI = 2
+} ConnectMethod;
+
 typedef struct {
     wchar_t selectedAddresses[MAX_SELECTED_DEVICES][MAC_ADDR_LEN];
     int selectedCount;
@@ -13,6 +19,7 @@ typedef struct {
     bool enableNotifications;
     bool sendMediaPlayOnConnect;
     bool sendMediaPauseOnDisconnect;
+    ConnectMethod connectMethod;
     bool useUiaConnect;
     bool useUiaDisconnect;
     bool useHciDisconnect;
