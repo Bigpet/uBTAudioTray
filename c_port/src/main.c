@@ -454,6 +454,17 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             if (tr) {
                 ui_menu_set_device_busy(tr->deviceAddress, DEVICE_BUSY_NONE);
 
+                if (tr->outcome == TOGGLE_CONNECTED || tr->outcome == TOGGLE_DISCONNECTED) {
+                    bool newConn = (tr->outcome == TOGGLE_CONNECTED);
+                    for (int i = 0; i < g_cachedDeviceCount; i++) {
+                        if (_wcsicmp(g_cachedDevices[i].address, tr->deviceAddress) == 0) {
+                            g_cachedDevices[i].isConnected = newConn;
+                            break;
+                        }
+                    }
+                    ui_menu_update_devices(g_cachedDevices, g_cachedDeviceCount);
+                }
+
                 if (tr->outcome == TOGGLE_CONNECTED) g_batchHadConnect = true;
                 if (tr->outcome == TOGGLE_DISCONNECTED) g_batchHadDisconnect = true;
                 if (tr->outcome == TOGGLE_FAILED) {

@@ -157,9 +157,114 @@ static bool guid_matches(const GUID* a, const GUID* b) {
     return (memcmp(a, b, sizeof(GUID)) == 0);
 }
 
+typedef struct {
+    wchar_t deviceId[512];
+    wchar_t friendlyName[256];
+} ActiveAudioEndpoint;
+
+static int get_active_bluetooth_audio_endpoints(ActiveAudioEndpoint* outList, int maxList) {
+    if (!outList || maxList <= 0) return 0;
+
+    HRESULT hrCo = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    bool mustUninit = (hrCo == S_OK || hrCo == S_FALSE);
+
+    IMMDeviceEnumerator* pEnumerator = NULL;
+    HRESULT hr = CoCreateInstance(&CLSID_MMDeviceEnumerator_Bt, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator_Bt, (void**)&pEnumerator);
+    if (FAILED(hr) || !pEnumerator) {
+        if (mustUninit) CoUninitialize();
+        return -1;
+    }
+
+    IMMDeviceCollection* pDevices = NULL;
+    hr = pEnumerator->lpVtbl->EnumAudioEndpoints(pEnumerator, eAll, DEVICE_STATE_ACTIVE, &pDevices);
+    if (FAILED(hr) || !pDevices) {
+        pEnumerator->lpVtbl->Release(pEnumerator);
+        if (mustUninit) CoUninitialize();
+        return -1;
+    }
+
+    UINT devCount = 0;
+    pDevices->lpVtbl->GetCount(pDevices, &devCount);
+    int activeCount = 0;
+
+    for (UINT i = 0; i < devCount && activeCount < maxList; i++) {
+        IMMDevice* pDevice = NULL;
+        if (FAILED(pDevices->lpVtbl->Item(pDevices, i, &pDevice)) || !pDevice) continue;
+
+        WCHAR friendlyName[256] = L"";
+        IPropertyStore* pPropStore = NULL;
+        if (SUCCEEDED(pDevice->lpVtbl->OpenPropertyStore(pDevice, STGM_READ, &pPropStore)) && pPropStore) {
+            PROPVARIANT pv;
+            PropVariantInit(&pv);
+            if (SUCCEEDED(pPropStore->lpVtbl->GetValue(pPropStore, &PKEY_Device_FriendlyName_Bt, &pv)) && pv.vt == VT_LPWSTR && pv.pwszVal) {
+                wcsncpy_s(friendlyName, 256, pv.pwszVal, _TRUNCATE);
+            }
+            PropVariantClear(&pv);
+            pPropStore->lpVtbl->Release(pPropStore);
+        }
+
+        IDeviceTopology* pTopology = NULL;
+        hr = pDevice->lpVtbl->Activate(pDevice, &IID_IDeviceTopology_Bt, CLSCTX_ALL, NULL, (void**)&pTopology);
+        if (SUCCEEDED(hr) && pTopology) {
+            UINT connCount = 0;
+            pTopology->lpVtbl->GetConnectorCount(pTopology, &connCount);
+            for (UINT c = 0; c < connCount; c++) {
+                IConnector* pConnector = NULL;
+                if (FAILED(pTopology->lpVtbl->GetConnector(pTopology, c, &pConnector)) || !pConnector) continue;
+
+                IConnector* pOtherConnector = NULL;
+                hr = pConnector->lpVtbl->GetConnectedTo(pConnector, &pOtherConnector);
+                if (SUCCEEDED(hr) && pOtherConnector) {
+                    IPart* pPart = NULL;
+                    hr = pOtherConnector->lpVtbl->QueryInterface(pOtherConnector, &IID_IPart_Bt, (void**)&pPart);
+                    if (SUCCEEDED(hr) && pPart) {
+                        IDeviceTopology* pOtherTopology = NULL;
+                        hr = pPart->lpVtbl->GetTopologyObject(pPart, &pOtherTopology);
+                        if (SUCCEEDED(hr) && pOtherTopology) {
+                            LPWSTR otherDeviceId = NULL;
+                            hr = pOtherTopology->lpVtbl->GetDeviceId(pOtherTopology, &otherDeviceId);
+                            if (SUCCEEDED(hr) && otherDeviceId) {
+                                bool isBt = (_wcsnicmp(otherDeviceId, L"{2}.\\\\?\\bth", 10) == 0 ||
+                                             wcsstr(otherDeviceId, L"bthenum") != NULL ||
+                                             wcsstr(otherDeviceId, L"bthhfenum") != NULL ||
+                                             wcsstr(otherDeviceId, L"BTH") != NULL);
+                                if (isBt) {
+                                    wcsncpy_s(outList[activeCount].friendlyName, 256, friendlyName, _TRUNCATE);
+                                    wchar_t lowerOtherId[512];
+                                    wcsncpy_s(lowerOtherId, 512, otherDeviceId, _TRUNCATE);
+                                    for (int k = 0; lowerOtherId[k]; k++) {
+                                        lowerOtherId[k] = (wchar_t)towlower(lowerOtherId[k]);
+                                    }
+                                    wcsncpy_s(outList[activeCount].deviceId, 512, lowerOtherId, _TRUNCATE);
+                                    activeCount++;
+                                }
+                                CoTaskMemFree(otherDeviceId);
+                            }
+                            pOtherTopology->lpVtbl->Release(pOtherTopology);
+                        }
+                        pPart->lpVtbl->Release(pPart);
+                    }
+                    pOtherConnector->lpVtbl->Release(pOtherConnector);
+                }
+                pConnector->lpVtbl->Release(pConnector);
+            }
+            pTopology->lpVtbl->Release(pTopology);
+        }
+        pDevice->lpVtbl->Release(pDevice);
+    }
+
+    pDevices->lpVtbl->Release(pDevices);
+    pEnumerator->lpVtbl->Release(pEnumerator);
+    if (mustUninit) CoUninitialize();
+    return activeCount;
+}
+
 int bt_discover_audio_devices(BluetoothAudioDevice* outDevices, int maxDevices) {
     bt_init();
     if (!outDevices || maxDevices <= 0) return 0;
+
+    ActiveAudioEndpoint activeEndpoints[32];
+    int activeEndpointCount = get_active_bluetooth_audio_endpoints(activeEndpoints, 32);
 
     BLUETOOTH_DEVICE_SEARCH_PARAMS searchParams = { 0 };
     searchParams.dwSize = sizeof(BLUETOOTH_DEVICE_SEARCH_PARAMS);
@@ -208,9 +313,39 @@ int bt_discover_audio_devices(BluetoothAudioDevice* outDevices, int maxDevices) 
             wcscpy_s(dev->displayName, 260, deviceInfo.szName);
             wcscpy_s(dev->address, 24, addrStr);
             dev->rawAddress = deviceInfo.Address.ullLong;
-            dev->isConnected = (deviceInfo.fConnected != FALSE);
             dev->supportsAudioSink = hasA2DP;
             dev->supportsHandsfree = hasHFP;
+
+            bool isConnected = false;
+            if (deviceInfo.fConnected) {
+                if (activeEndpointCount >= 0) {
+                    wchar_t cleanMac[24] = { 0 };
+                    int cIdx = 0;
+                    for (int k = 0; addrStr[k] && cIdx < 23; k++) {
+                        if (addrStr[k] != L':') {
+                            cleanMac[cIdx++] = (wchar_t)towlower(addrStr[k]);
+                        }
+                    }
+                    cleanMac[cIdx] = L'\0';
+
+                    for (int a = 0; a < activeEndpointCount; a++) {
+                        if (cleanMac[0] != L'\0' && wcsstr(activeEndpoints[a].deviceId, cleanMac) != NULL) {
+                            isConnected = true;
+                            break;
+                        }
+                        if (deviceInfo.szName[0] != L'\0' && activeEndpoints[a].friendlyName[0] != L'\0') {
+                            if (wcsstr(activeEndpoints[a].friendlyName, deviceInfo.szName) != NULL ||
+                                wcsstr(deviceInfo.szName, activeEndpoints[a].friendlyName) != NULL) {
+                                isConnected = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    isConnected = true;
+                }
+            }
+            dev->isConnected = isConnected;
             deviceCount++;
         }
 
