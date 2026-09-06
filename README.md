@@ -8,7 +8,7 @@ Mostly LLM generated C rewrite of Joel-Hjertens' [QuickBTTray](https://github.co
 
 For quick connecting/disconnecting of Bluetooth audio devices.
 Useful when you have Bluetooth device without working Multipoint connection switching. As well in case of a Windows application that doesn't release the audio stream correctly. Then it can be pain to go through the same Menu multiple times a day to disconnect/reconnect the Bluetooth Audio device.
-This app minimizes that friction: a simple left-click on the tray icon instantly toggles the connection of the devices you’ve selected in the app's menu. This app should hopefully work for anyone who has a Bluetooth headset without multipoint support.
+This app minimizes that friction: a simple left-click on the tray icon instantly toggles the connection of the devices you’ve selected in the app's menu.
 
 ## Features
 - One-click on the tray icon to connect/disconnect for selected Bluetooth audio devices
