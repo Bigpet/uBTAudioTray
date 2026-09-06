@@ -64,6 +64,7 @@ target_link_libraries(uBTAudioTray PRIVATE
     dwmapi
     comctl32
     ole32
+    gdiplus
 )
 
 if(ENABLE_UI)

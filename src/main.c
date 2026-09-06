@@ -707,6 +707,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     queue_init();
 
     // Initialize UI windows
+    ui_common_init();
     ui_menu_init(hInstance, g_hHiddenWnd);
     ui_settings_init(hInstance, g_hHiddenWnd);
     ui_menu_set_callbacks(on_device_toggle, on_settings_requested, on_exit_requested, on_selection_changed);
@@ -743,6 +744,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     queue_cleanup();
     ui_menu_cleanup();
     ui_settings_cleanup();
+    ui_common_cleanup();
     audio_state_notification_unregister();
     bt_cleanup();
     CoUninitialize();

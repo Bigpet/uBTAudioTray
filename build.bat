@@ -151,7 +151,7 @@ cl.exe /nologo /O2 /W4 /wd4201 /GL /utf-8 /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_
     "%SRC_DIR%\main.c" ^
     "!OBJ_DIR!\resource.res" ^
     /link /SUBSYSTEM:WINDOWS /INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF ^
-    user32.lib gdi32.lib shell32.lib advapi32.lib bthprops.lib dwmapi.lib comctl32.lib ole32.lib !EXTRA_LIBS!
+    user32.lib gdi32.lib shell32.lib advapi32.lib bthprops.lib dwmapi.lib comctl32.lib ole32.lib gdiplus.lib !EXTRA_LIBS!
 
 if %ERRORLEVEL% equ 0 (
     echo.
