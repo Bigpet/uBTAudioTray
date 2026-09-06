@@ -68,10 +68,12 @@ typedef struct {
 } ActionStartInfo;
 
 AppState g_appState;
+static HINSTANCE g_hInstance = NULL;
 static HWND g_hHiddenWnd = NULL;
 static NOTIFYICONDATAW g_nid = { 0 };
 static HICON g_hIconDefault = NULL;
 static HICON g_hIconConnecting = NULL;
+static UINT g_trayDpi = 96;
 static bool g_blinkState = false;
 static bool g_isBusy = false;
 static volatile LONG g_isScanning = 0;
@@ -119,6 +121,48 @@ static void update_tray_icon(void) {
     HICON targetIcon = get_current_idle_icon();
     if (g_nid.hIcon != targetIcon) {
         g_nid.hIcon = targetIcon;
+        Shell_NotifyIconW(NIM_MODIFY, &g_nid);
+    }
+}
+
+static void reload_tray_icons(void) {
+    HWND hTaskbar = FindWindowW(L"Shell_TrayWnd", NULL);
+    UINT dpi = 96;
+    if (hTaskbar) {
+        dpi = ui_get_window_dpi(hTaskbar);
+    } else if (g_hHiddenWnd) {
+        dpi = ui_get_window_dpi(g_hHiddenWnd);
+    }
+
+    int smWidth = ui_get_system_metric_for_dpi(SM_CXSMICON, dpi);
+    int smHeight = ui_get_system_metric_for_dpi(SM_CYSMICON, dpi);
+
+    HICON newDefault = (HICON)LoadImageW(g_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, smWidth, smHeight, LR_DEFAULTCOLOR);
+    HICON newConnecting = (HICON)LoadImageW(g_hInstance, MAKEINTRESOURCEW(IDI_CONNECTING_ICON), IMAGE_ICON, smWidth, smHeight, LR_DEFAULTCOLOR);
+
+    if (newDefault) {
+        if (g_hIconDefault && g_hIconDefault != newDefault) {
+            DestroyIcon(g_hIconDefault);
+        }
+        g_hIconDefault = newDefault;
+    }
+    if (newConnecting) {
+        if (g_hIconConnecting && g_hIconConnecting != newConnecting) {
+            DestroyIcon(g_hIconConnecting);
+        }
+        g_hIconConnecting = newConnecting;
+    }
+
+    if (!g_hIconDefault) g_hIconDefault = LoadIconW(g_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+    if (!g_hIconConnecting) g_hIconConnecting = LoadIconW(g_hInstance, MAKEINTRESOURCEW(IDI_CONNECTING_ICON));
+    if (!g_hIconDefault) g_hIconDefault = LoadIconW(NULL, IDI_APPLICATION);
+    if (!g_hIconConnecting) g_hIconConnecting = g_hIconDefault;
+
+    g_trayDpi = dpi;
+
+    HICON targetIcon = g_isBusy ? (g_blinkState ? g_hIconConnecting : g_hIconDefault) : get_current_idle_icon();
+    g_nid.hIcon = targetIcon;
+    if (g_hHiddenWnd && g_nid.hWnd) {
         Shell_NotifyIconW(NIM_MODIFY, &g_nid);
     }
 }
@@ -605,9 +649,15 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
         }
 
         case WM_SETTINGCHANGE:
-            // Windows Dark/Light mode theme change
+            // Windows Dark/Light mode theme change or metric change
             if (ui_menu_is_visible()) InvalidateRect(ui_menu_get_hwnd(), NULL, TRUE);
             if (ui_settings_is_visible()) InvalidateRect(ui_settings_get_hwnd(), NULL, TRUE);
+            reload_tray_icons();
+            return 0;
+
+        case WM_DPICHANGED:
+        case WM_DISPLAYCHANGE:
+            reload_tray_icons();
             return 0;
 
         case WM_DESTROY:
@@ -625,6 +675,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     (void)lpCmdLine;
     (void)nCmdShow;
 
+    g_hInstance = hInstance;
+
     // Single instance mutex
     HANDLE hMutex = CreateMutexW(NULL, TRUE, L"uBTAudioTray_SingleInstance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -639,17 +691,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
 
     app_state_load(&g_appState);
 
-    int smWidth = GetSystemMetrics(SM_CXSMICON);
-    int smHeight = GetSystemMetrics(SM_CYSMICON);
-    g_hIconDefault = (HICON)LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, smWidth, smHeight, LR_DEFAULTCOLOR);
-    g_hIconConnecting = (HICON)LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_CONNECTING_ICON), IMAGE_ICON, smWidth, smHeight, LR_DEFAULTCOLOR);
-
-    // Fallbacks if resources not found
-    if (!g_hIconDefault) g_hIconDefault = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-    if (!g_hIconConnecting) g_hIconConnecting = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_CONNECTING_ICON));
-    if (!g_hIconDefault) g_hIconDefault = LoadIconW(NULL, IDI_APPLICATION);
-    if (!g_hIconConnecting) g_hIconConnecting = g_hIconDefault;
-
     // Register hidden message window class
     WNDCLASSEXW wc = { 0 };
     wc.cbSize = sizeof(WNDCLASSEXW);
@@ -658,7 +699,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     wc.lpszClassName = L"uBTAudioTray_HiddenMsgWnd";
     RegisterClassExW(&wc);
 
-    g_hHiddenWnd = CreateWindowExW(0, wc.lpszClassName, L"uBTAudioTrayMsg", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, hInstance, NULL);
+    // Create a hidden top-level window so it receives system broadcast messages (WM_SETTINGCHANGE, WM_DISPLAYCHANGE, WM_DPICHANGED)
+    g_hHiddenWnd = CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"uBTAudioTrayMsg", WS_POPUP, 0, 0, 0, 0, NULL, NULL, hInstance, NULL);
+
+    reload_tray_icons();
 
     queue_init();
 
@@ -694,6 +738,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
 
     // Cleanup
     Shell_NotifyIconW(NIM_DELETE, &g_nid);
+    if (g_hIconDefault) { DestroyIcon(g_hIconDefault); g_hIconDefault = NULL; }
+    if (g_hIconConnecting) { DestroyIcon(g_hIconConnecting); g_hIconConnecting = NULL; }
     queue_cleanup();
     ui_menu_cleanup();
     ui_settings_cleanup();
