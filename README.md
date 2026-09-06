@@ -4,7 +4,7 @@ A lightweight Windows tray application for quick management of Bluetooth audio d
 
 Mostly LLM generated C rewrite of Joel-Hjertens' [QuickBTTray](https://github.com/Joel-Hjerten/QuickBTTray). This README also derives from their version.
 
-<img src="res/Screenshot_uBTAudioTray.png" alt="uBTAudioTray Icon"/>
+<img src="res/Screenshot_uBTAudioTray.png?v=2" alt="uBTAudioTray Icon"/>
 
 For quick connecting/disconnecting of Bluetooth audio devices.
 Useful when you have Bluetooth device without working Multipoint connection switching. As well in case of a Windows application that doesn't release the audio stream correctly. Then it can be pain to go through the same Menu multiple times a day to disconnect/reconnect the Bluetooth Audio device.
