@@ -242,7 +242,8 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
         if (wr == WAIT_OBJECT_0 + 1) {
             // Work event signaled: drain items sequentially
             while (1) {
-                QueuedAction item = { { 0 } };
+                QueuedAction item;
+                memset(&item, 0, sizeof(QueuedAction));
                 bool hasWork = false;
 
                 EnterCriticalSection(&g_queue.cs);

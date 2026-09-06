@@ -3,7 +3,8 @@
 
 TaskbarEdge ui_get_taskbar_edge(POINT pt, RECT* outWorkArea) {
     HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO mi = { sizeof(MONITORINFO) };
+    MONITORINFO mi = { 0 };
+    mi.cbSize = sizeof(MONITORINFO);
     if (!GetMonitorInfoW(hMon, &mi)) {
         SystemParametersInfoW(SPI_GETWORKAREA, 0, outWorkArea, 0);
         return TASKBAR_EDGE_BOTTOM;

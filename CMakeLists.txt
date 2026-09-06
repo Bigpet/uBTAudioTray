@@ -48,9 +48,12 @@ endif()
 
 add_executable(uBTAudioTray WIN32 ${SOURCES})
 
-target_compile_options(uBTAudioTray PRIVATE
-    $<$<C_COMPILER_ID:MSVC>:/W4 /wd4201 /utf-8 /O2>
-)
+if(MSVC)
+    target_compile_options(uBTAudioTray PRIVATE /W4 /wd4201 /utf-8 /O2)
+    target_link_options(uBTAudioTray PRIVATE "/MANIFEST:NO")
+else()
+    target_compile_options(uBTAudioTray PRIVATE -Wall -O2)
+endif()
 
 target_link_libraries(uBTAudioTray PRIVATE
     user32

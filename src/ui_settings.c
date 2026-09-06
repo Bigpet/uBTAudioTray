@@ -446,7 +446,8 @@ void ui_settings_show(void) {
 
     POINT pt = { menuRc.left, menuRc.top };
     HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO mi = { sizeof(MONITORINFO) };
+    MONITORINFO mi = { 0 };
+    mi.cbSize = sizeof(MONITORINFO);
     GetMonitorInfoW(hMon, &mi);
     RECT work = mi.rcWork;
 
