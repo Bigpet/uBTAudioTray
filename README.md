@@ -42,11 +42,13 @@ This app minimizes that friction: a simple left-click on the tray icon instantly
 
 
 ## Building
-You need the Win10 or Win11 SDK Headers installed.
-- To build a portable, standalone EXE:
-	```
+
+- **To build default standalone x64 EXE (requires Visual Studio)**:
+	```cmd
 	build.bat
 	```
+
+Otherwise the CMakeLists.txt can be used to compile with other compilers.
 
 ## Notes
 - The app does not collect or transmit any user data.
