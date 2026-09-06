@@ -61,7 +61,7 @@ static SettingsHitType hit_test_settings(int x, int y) {
 
     // Header github link
     if (y >= ui_scale(6, dpi) && y <= ui_scale(30, dpi) &&
-        x >= width - ui_scale(115, dpi) && x <= width - ui_scale(10, dpi)) {
+        x >= width - ui_scale(130, dpi) && x <= width - ui_scale(10, dpi)) {
         return SET_HIT_GITHUB;
     }
 
@@ -156,17 +156,22 @@ static void on_paint_settings(HWND hwnd) {
     // 1. Header: "Settings"
     SelectObject(memDC, g_hFontBold);
     SetTextColor(memDC, theme.fg);
-    RECT titleRc = { ui_scale(12, dpi), ui_scale(6, dpi), width - ui_scale(120, dpi), headerH };
+    RECT titleRc = { ui_scale(12, dpi), ui_scale(6, dpi), width - ui_scale(135, dpi), headerH };
     DrawTextW(memDC, L"Settings", -1, &titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // GitHub version link
-    RECT gitRc = { width - ui_scale(120, dpi), ui_scale(6, dpi), width - ui_scale(10, dpi), headerH };
+    SelectObject(memDC, g_hFontSmall);
+    const wchar_t* verText = L"uBTAudioTray-v" APP_VERSION_WIDE;
+    SIZE sz = { 0 };
+    GetTextExtentPoint32W(memDC, verText, (int)wcslen(verText), &sz);
+    int padX = ui_scale(4, dpi);
+    int gitW = sz.cx + padX * 2;
+    RECT gitRc = { width - ui_scale(10, dpi) - gitW, ui_scale(6, dpi), width - ui_scale(10, dpi), headerH - ui_scale(6, dpi) };
     if (g_hoveredHit == SET_HIT_GITHUB) {
         ui_draw_rounded_rect(memDC, &gitRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
     }
-    SelectObject(memDC, g_hFontSmall);
     SetTextColor(memDC, theme.accent);
-    DrawTextW(memDC, L"uBTAudioTray-v1.0", -1, &gitRc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(memDC, verText, -1, &gitRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     // Separator
     HPEN sepPen = CreatePen(PS_SOLID, 1, theme.separator);
