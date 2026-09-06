@@ -8,11 +8,11 @@
 // Application Information
 // ============================================================================
 #ifndef APP_VERSION_STR
-#define APP_VERSION_STR "1.0.1"
+#define APP_VERSION_STR "1.0.2"
 #endif
 
 #ifndef APP_VERSION_WIDE
-#define APP_VERSION_WIDE L"1.0.1"
+#define APP_VERSION_WIDE L"1.0.2"
 #endif
 
 // ============================================================================
