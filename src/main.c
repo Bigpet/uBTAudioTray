@@ -281,6 +281,9 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
         DWORD wr = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
         if (wr == WAIT_OBJECT_0) {
             // Stop requested
+#if ENABLE_UI
+            uia_close_settings_if_opened();
+#endif
             break;
         }
         if (wr == WAIT_OBJECT_0 + 1) {
@@ -289,6 +292,7 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
                 QueuedAction item;
                 memset(&item, 0, sizeof(QueuedAction));
                 bool hasWork = false;
+                bool hasMore = false;
 
                 EnterCriticalSection(&g_queue.cs);
                 if (g_queue.count > 0) {
@@ -298,12 +302,16 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
                     g_queue.currentItem = item;
                     g_queue.hasCurrent = true;
                     hasWork = true;
+                    hasMore = (g_queue.count > 0);
                 } else {
                     g_queue.hasCurrent = false;
                 }
                 LeaveCriticalSection(&g_queue.cs);
 
                 if (!hasWork) {
+#if ENABLE_UI
+                    uia_close_settings_if_opened();
+#endif
                     PostMessageW(g_hHiddenWnd, WM_APP_QUEUE_EMPTY, 0, 0);
                     break;
                 }
@@ -329,7 +337,7 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
 #endif
 #if ENABLE_UI
                         if (g_appState.connectMethod == CONNECT_METHOD_UI) {
-                            uia_connect_device(item.name, item.address, tr);
+                            uia_connect_device(item.name, item.address, hasMore, tr);
                         } else
 #endif
 #if ENABLE_API_HCI
@@ -350,7 +358,7 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
 #endif
 #if ENABLE_UI
                         if (g_appState.disconnectMethod == DISCONNECT_METHOD_UI) {
-                            uia_disconnect_device(item.name, item.address, tr);
+                            uia_disconnect_device(item.name, item.address, hasMore, tr);
                         } else
 #endif
 #if ENABLE_API_HCI
@@ -368,6 +376,9 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
                 }
 
                 if (WaitForSingleObject(g_queue.hStopEvent, 0) == WAIT_OBJECT_0) {
+#if ENABLE_UI
+                    uia_close_settings_if_opened();
+#endif
                     return 0;
                 }
             }
