@@ -4,12 +4,13 @@
 uBTAudioTray Screenshot Generator
 Automates:
 1. Setting primary monitor display scaling to 175% (or user-specified DPI)
-2. Launching uBTAudioTray.exe
-3. Opening the tray menu
-4. Opening the settings window
+2. Launching uBTAudioTray.exe on the interactive desktop (winsta0\\default)
+3. Opening the tray menu directly above the tray icon
+4. Opening the settings window (stacked above the menu)
 5. Re-focusing the menu window
 6. Capturing a transparent PNG with authentic Windows DWM window shadows via two-pass differential matting
-7. Safely restoring original display scaling and theme settings
+7. Seamlessly incorporating the right side of the Taskbar (notification area & tray icon) to highlight the tray context
+8. Safely restoring original display scaling and theme settings
 """
 
 import argparse
@@ -40,6 +41,7 @@ WM_RBUTTONUP = 0x0205
 WM_LBUTTONDOWN = 0x0201
 WM_LBUTTONUP = 0x0202
 WM_CLOSE = 0x0010
+WM_SETTINGCHANGE = 0x001A
 
 WS_POPUP = 0x80000000
 WS_EX_TOOLWINDOW = 0x00000080
@@ -58,7 +60,7 @@ SRCCOPY = 0x00CC0020
 DPI_VALS = [100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500]
 
 REG_THEMES = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-VAL_LIGHT_THEME = "AppsUseLightTheme"
+VAL_APPS_LIGHT_THEME = "AppsUseLightTheme"
 
 
 # Struct Definitions
@@ -175,6 +177,38 @@ class NOTIFYICONIDENTIFIER(ctypes.Structure):
     ]
 
 
+class STARTUPINFOW(ctypes.Structure):
+    _fields_ = [
+        ("cb", wintypes.DWORD),
+        ("lpReserved", wintypes.LPWSTR),
+        ("lpDesktop", wintypes.LPWSTR),
+        ("lpTitle", wintypes.LPWSTR),
+        ("dwX", wintypes.DWORD),
+        ("dwY", wintypes.DWORD),
+        ("dwXSize", wintypes.DWORD),
+        ("dwYSize", wintypes.DWORD),
+        ("dwXCountChars", wintypes.DWORD),
+        ("dwYCountChars", wintypes.DWORD),
+        ("dwFillAttribute", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("wShowWindow", wintypes.WORD),
+        ("cbReserved2", wintypes.WORD),
+        ("lpReserved2", ctypes.c_void_p),
+        ("hStdInput", wintypes.HANDLE),
+        ("hStdOutput", wintypes.HANDLE),
+        ("hStdError", wintypes.HANDLE),
+    ]
+
+
+class PROCESS_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("hProcess", wintypes.HANDLE),
+        ("hThread", wintypes.HANDLE),
+        ("dwProcessId", wintypes.DWORD),
+        ("dwThreadId", wintypes.DWORD),
+    ]
+
+
 class BITMAPINFOHEADER(ctypes.Structure):
     _fields_ = [
         ("biSize", wintypes.DWORD),
@@ -231,18 +265,19 @@ class WNDCLASSEXW(ctypes.Structure):
 
 
 def init_win32_environment():
-    """Ensure Per-Monitor V2 DPI awareness and access to the interactive desktop."""
+    """Ensure Per-Monitor V2 DPI awareness and attach thread to interactive desktop."""
     try:
         user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
     except Exception as e:
         print(f"Warning: SetProcessDpiAwarenessContext failed: {e}")
 
+    # Attach current thread to Default desktop where Shell_TrayWnd and interactive shell live
     try:
         hDefDesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
         if hDefDesk:
             user32.SetThreadDesktop(hDefDesk)
     except Exception as e:
-        print(f"Warning: SetThreadDesktop failed: {e}")
+        print(f"Warning: SetThreadDesktop to Default failed: {e}")
 
 
 def get_primary_display_info():
@@ -319,22 +354,23 @@ def set_dpi(adapterId, sourceId, targetDpi):
 
 
 def get_system_theme():
-    """Returns 0 for dark theme, 1 for light theme."""
+    """Returns AppsUseLightTheme (0 for dark, 1 for light)."""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_THEMES, 0, winreg.KEY_READ) as k:
-            val, _ = winreg.QueryValueEx(k, VAL_LIGHT_THEME)
+            val, _ = winreg.QueryValueEx(k, VAL_APPS_LIGHT_THEME)
             return val
     except Exception:
         return 1
 
 
 def set_system_theme(val):
-    """Sets AppsUseLightTheme (0 for dark, 1 for light)."""
+    """Sets AppsUseLightTheme (0 for dark, 1 for light) and broadcasts setting change."""
     try:
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER, REG_THEMES, 0, winreg.KEY_SET_VALUE
         ) as k:
-            winreg.SetValueEx(k, VAL_LIGHT_THEME, 0, winreg.REG_DWORD, val)
+            winreg.SetValueEx(k, VAL_APPS_LIGHT_THEME, 0, winreg.REG_DWORD, val)
+        user32.SendMessageTimeoutW(0xFFFF, WM_SETTINGCHANGE, 0, "ImmersiveColorSet", 2, 1000, None)
     except Exception as e:
         print(f"Warning: Failed to update theme setting: {e}")
 
@@ -366,7 +402,7 @@ def capture_screen_rect(x, y, w, h):
     return Image.frombuffer("RGBA", (w, h), bytes(buf), "raw", "BGRA", 0, 1)
 
 
-def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi=True, exe_path=None):
+def generate_screenshot(output_path, target_dpi=175, theme="dark", restore_dpi=True, exe_path=None, include_taskbar=True):
     """Full automation workflow to generate the screenshot."""
     init_win32_environment()
 
@@ -398,32 +434,44 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
         set_system_theme(1)
         theme_changed = True
 
-    app_proc = None
+    pi = PROCESS_INFORMATION()
 
     try:
         # Step 1: Close any existing instances
         print("Closing any running uBTAudioTray instances...")
-        subprocess.run(["taskkill", "/F", "/IM", "uBTAudioTray*.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(0.5)
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "uBTAudioTray.exe", "/IM", "uBTAudioTray-x64.exe", "/IM", "uBTAudioTray-arm64.exe", "/IM", "uBTAudioTray-x64-no-uia.exe"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.8)
 
         # Step 2: Set display scaling
         if orig_dpi != target_dpi:
             print(f"Setting primary monitor DPI scaling to {target_dpi}%...")
             if not set_dpi(adapterId, sourceId, target_dpi):
                 raise RuntimeError(f"Failed to set DPI scaling to {target_dpi}%")
-            time.sleep(2.0)  # Allow shell to relayout taskbar and icons
+            time.sleep(2.5)  # Allow shell to relayout taskbar and notification area
             cur_dpi, _, _ = get_dpi(adapterId, sourceId)
             print(f"Verified DPI: {cur_dpi}%")
         else:
             print(f"Primary monitor is already at {target_dpi}% DPI.")
 
-        # Step 3: Launch application
-        print(f"Launching {exe_path}...")
-        app_proc = subprocess.Popen([exe_path], cwd=os.path.dirname(exe_path))
+        # Step 3: Launch application on interactive desktop (winsta0\default)
+        print(f"Launching {exe_path} on interactive desktop...")
+        si = STARTUPINFOW()
+        si.cb = ctypes.sizeof(STARTUPINFOW)
+        si.lpDesktop = "winsta0\\default"
+
+        ok = kernel32.CreateProcessW(
+            exe_path, None, None, None, False, 0, None, None, ctypes.byref(si), ctypes.byref(pi)
+        )
+        if not ok:
+            raise RuntimeError(f"Failed to launch {exe_path} (error code: {kernel32.GetLastError()})")
 
         # Wait for hidden message window
         hwndMsg = None
-        for _ in range(50):
+        for _ in range(60):
             hwndMsg = user32.FindWindowW("uBTAudioTray_HiddenMsgWnd", "uBTAudioTrayMsg")
             if hwndMsg:
                 break
@@ -432,7 +480,16 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
         if not hwndMsg:
             raise RuntimeError("Failed to detect uBTAudioTray message window.")
 
-        time.sleep(1.2)  # Wait for initial Bluetooth scan to complete
+        time.sleep(2.5)  # Wait for initial Bluetooth device scan to settle
+
+        # Ensure no residual menu/settings window is visible
+        hOldMenu = user32.FindWindowW("uBTAudioTray_MenuWindow", None)
+        if hOldMenu and user32.IsWindowVisible(hOldMenu):
+            user32.SendMessageW(hOldMenu, WM_CLOSE, 0, 0)
+        hOldSettings = user32.FindWindowW("uBTAudioTray_SettingsWindow", None)
+        if hOldSettings and user32.IsWindowVisible(hOldSettings):
+            user32.SendMessageW(hOldSettings, WM_CLOSE, 0, 0)
+        time.sleep(0.3)
 
         # Step 4: Find tray icon position
         nid = NOTIFYICONIDENTIFIER()
@@ -453,14 +510,14 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
             print(f"Tray rect query returned {hex(hr)}; using fallback cursor ({trayX}, {trayY})")
 
         user32.SetCursorPos(trayX, trayY)
-        time.sleep(0.2)
+        time.sleep(0.3)
 
         # Step 5: Open tray menu
         print("Opening tray menu...")
         user32.PostMessageW(hwndMsg, WM_APP_TRAYMSG, 1, WM_RBUTTONUP)
 
         hMenu = None
-        for _ in range(30):
+        for _ in range(80):
             hMenu = user32.FindWindowW("uBTAudioTray_MenuWindow", None)
             if hMenu and user32.IsWindowVisible(hMenu):
                 break
@@ -485,7 +542,7 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
         user32.SendMessageW(hMenu, WM_LBUTTONUP, 0, lParam)
 
         hSettings = None
-        for _ in range(30):
+        for _ in range(40):
             hSettings = user32.FindWindowW("uBTAudioTray_SettingsWindow", None)
             if hSettings and user32.IsWindowVisible(hSettings):
                 break
@@ -508,8 +565,19 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
         shadowPad = scale(45)
         capLeft = min(rcMenu.left, rcSettings.left) - shadowPad
         capTop = min(rcMenu.top, rcSettings.top) - shadowPad
-        capRight = max(rcMenu.right, rcSettings.right) + shadowPad
-        capBottom = max(rcMenu.bottom, rcSettings.bottom) + shadowPad
+
+        rcTaskbar = wintypes.RECT()
+        if include_taskbar:
+            hTaskbar = user32.FindWindowW("Shell_TrayWnd", None)
+            user32.GetWindowRect(hTaskbar, ctypes.byref(rcTaskbar))
+            capRight = rcTaskbar.right
+            capBottom = rcTaskbar.bottom
+            backdropH = rcTaskbar.top - (capTop - 20)
+        else:
+            capRight = max(rcMenu.right, rcSettings.right) + shadowPad
+            capBottom = max(rcMenu.bottom, rcSettings.bottom) + shadowPad
+            backdropH = capBottom - capTop + 40
+
         capW = capRight - capLeft
         capH = capBottom - capTop
         print(f"Capture region: ({capLeft}, {capTop}, {capW}x{capH})")
@@ -537,7 +605,7 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
             capLeft - 20,
             capTop - 20,
             capW + 40,
-            capH + 40,
+            backdropH,
             None,
             None,
             hInstance,
@@ -551,7 +619,7 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
             capLeft - 20,
             capTop - 20,
             capW + 40,
-            capH + 40,
+            backdropH,
             SWP_NOACTIVATE | SWP_SHOWWINDOW,
         )
         user32.SetWindowPos(
@@ -587,36 +655,48 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
         out = Image.new("RGBA", (capW, capH), (0, 0, 0, 0))
         out_data = out.load()
 
+        taskbar_local_y = (rcTaskbar.top - capTop) if include_taskbar else capH
+
         for y in range(capH):
+            is_taskbar_row = y >= taskbar_local_y
             for x in range(capW):
                 rw, gw, bw, _ = w_data[x, y]
                 rb, gb, bb, _ = b_data[x, y]
-                ar = 255 - (rw - rb)
-                ag = 255 - (gw - gb)
-                ab = 255 - (bw - bb)
-                a = max(0, min(255, int(round((ar + ag + ab) / 3.0))))
 
-                if a <= 2:
-                    out_data[x, y] = (0, 0, 0, 0)
-                elif a >= 253:
+                if is_taskbar_row:
                     out_data[x, y] = (rb, gb, bb, 255)
                 else:
-                    fa = a / 255.0
-                    r = min(255, max(0, int(round(rb / fa))))
-                    g = min(255, max(0, int(round(gb / fa))))
-                    b = min(255, max(0, int(round(bb / fa))))
-                    out_data[x, y] = (r, g, b, a)
+                    ar = 255 - (rw - rb)
+                    ag = 255 - (gw - gb)
+                    ab = 255 - (bw - bb)
+                    a = max(0, min(255, int(round((ar + ag + ab) / 3.0))))
+
+                    if a <= 2:
+                        out_data[x, y] = (0, 0, 0, 0)
+                    elif a >= 253:
+                        out_data[x, y] = (rb, gb, bb, 255)
+                    else:
+                        fa = a / 255.0
+                        r = min(255, max(0, int(round(rb / fa))))
+                        g = min(255, max(0, int(round(gb / fa))))
+                        b = min(255, max(0, int(round(bb / fa))))
+                        out_data[x, y] = (r, g, b, a)
 
         # Crop excess outer transparent space
         bbox = out.getbbox()
         if bbox:
-            crop_box = (
-                max(0, bbox[0] - 10),
-                max(0, bbox[1] - 10),
-                min(capW, bbox[2] + 10),
-                min(capH, bbox[3] + 10),
-            )
-            out = out.crop(crop_box)
+            if include_taskbar:
+                top_crop = max(0, bbox[1] - 10)
+                left_crop = max(0, bbox[0] - 10)
+                out = out.crop((left_crop, top_crop, capW, capH))
+            else:
+                crop_box = (
+                    max(0, bbox[0] - 10),
+                    max(0, bbox[1] - 10),
+                    min(capW, bbox[2] + 10),
+                    min(capH, bbox[3] + 10),
+                )
+                out = out.crop(crop_box)
 
         # Ensure output directory exists and save
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -632,9 +712,15 @@ def generate_screenshot(output_path, target_dpi=175, theme="system", restore_dpi
         except Exception:
             pass
 
-        if app_proc:
+        if pi.hProcess:
             try:
-                app_proc.terminate()
+                kernel32.TerminateProcess(pi.hProcess, 0)
+                kernel32.CloseHandle(pi.hProcess)
+            except Exception:
+                pass
+        if pi.hThread:
+            try:
+                kernel32.CloseHandle(pi.hThread)
             except Exception:
                 pass
 
@@ -671,13 +757,18 @@ def main():
     parser.add_argument(
         "--theme",
         choices=["system", "dark", "light"],
-        default="system",
-        help="Window theme to capture (default: system)",
+        default="dark",
+        help="Window theme to capture (default: dark)",
     )
     parser.add_argument(
         "--keep-scale",
         action="store_true",
         help="Do not restore original display scaling after capture",
+    )
+    parser.add_argument(
+        "--no-taskbar",
+        action="store_true",
+        help="Exclude the taskbar notification area from the bottom of the screenshot",
     )
     parser.add_argument(
         "--exe",
@@ -693,6 +784,7 @@ def main():
         theme=args.theme,
         restore_dpi=not args.keep_scale,
         exe_path=args.exe,
+        include_taskbar=not args.no_taskbar,
     )
 
 
