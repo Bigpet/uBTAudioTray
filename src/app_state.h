@@ -1,7 +1,8 @@
 #pragma once
 
-#include <windows.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include "config.h"
 
 #define MAX_SELECTED_DEVICES 32
 #define MAC_ADDR_LEN 24
@@ -27,9 +28,6 @@ typedef struct {
     bool sendMediaPauseOnDisconnect;
     ConnectMethod connectMethod;
     DisconnectMethod disconnectMethod;
-    bool useUiaConnect;
-    bool useUiaDisconnect;
-    bool useHciDisconnect;
 } AppState;
 
 void app_state_init_default(AppState* state);

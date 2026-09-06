@@ -1,3 +1,4 @@
+#include "config.h"
 #include "ui_menu.h"
 #include "ui_settings.h"
 #include "ui_common.h"
@@ -454,7 +455,7 @@ void ui_menu_show(int anchorX, int anchorY) {
     ui_position_window(g_hMenuWnd, anchorX, anchorY, WINDOW_WIDTH, height);
 
     if (g_isBusy) {
-        SetTimer(g_hMenuWnd, TIMER_SPINNER, 100, NULL);
+        SetTimer(g_hMenuWnd, TIMER_SPINNER, UI_SPINNER_TIMER_MS, NULL);
     }
 
     ShowWindow(g_hMenuWnd, SW_SHOW);
@@ -500,7 +501,7 @@ void ui_menu_set_busy(bool isBusy) {
     g_isBusy = isBusy;
     if (g_hMenuWnd) {
         if (isBusy && IsWindowVisible(g_hMenuWnd)) {
-            SetTimer(g_hMenuWnd, TIMER_SPINNER, 100, NULL);
+            SetTimer(g_hMenuWnd, TIMER_SPINNER, UI_SPINNER_TIMER_MS, NULL);
         } else if (!isBusy) {
             KillTimer(g_hMenuWnd, TIMER_SPINNER);
         }

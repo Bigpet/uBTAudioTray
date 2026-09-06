@@ -1,3 +1,5 @@
+#include "config.h"
+#include <windows.h>
 #include "media.h"
 
 #define VK_MEDIA_PLAY_PAUSE 0xB3

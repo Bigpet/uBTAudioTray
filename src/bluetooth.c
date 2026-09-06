@@ -11,7 +11,7 @@
 #include <functiondiscoverykeys_devpkey.h>
 
 #define IOCTL_BTH_DISCONNECT_DEVICE 0x41000c
-#define CACHE_TTL_MS 45000
+#define CACHE_TTL_MS BT_SERVICE_CACHE_TTL_MS
 #define MAX_CACHED_SERVICES 16
 #define MAX_CACHE_ENTRIES 32
 
@@ -455,6 +455,7 @@ bool bt_get_connection_state(const wchar_t* address, bool* isConnected) {
     return false;
 }
 
+#if ENABLE_API_HCI
 bool bt_connect_device_api(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result) {
     bt_init();
     if (result) {
@@ -620,7 +621,9 @@ bool bt_disconnect_device_hci(const wchar_t* address, const wchar_t* name, Devic
     }
     return true;
 }
+#endif // ENABLE_API_HCI
 
+#if ENABLE_KS
 static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, bool isConnect, DeviceToggleResult* result) {
     bt_init();
     if (result) {
@@ -650,8 +653,12 @@ static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, boo
     HRESULT hr = CoCreateInstance(&CLSID_MMDeviceEnumerator_Bt, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator_Bt, (void**)&pEnumerator);
     if (FAILED(hr) || !pEnumerator) {
         if (mustUninit) CoUninitialize();
+#if ENABLE_API_HCI
         if (isConnect) return bt_connect_device_api(address, name, result);
         else return bt_disconnect_device_api(address, name, result);
+#else
+        return false;
+#endif
     }
 
     IMMDeviceCollection* pDevices = NULL;
@@ -659,8 +666,12 @@ static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, boo
     if (FAILED(hr) || !pDevices) {
         pEnumerator->lpVtbl->Release(pEnumerator);
         if (mustUninit) CoUninitialize();
+#if ENABLE_API_HCI
         if (isConnect) return bt_connect_device_api(address, name, result);
         else return bt_disconnect_device_api(address, name, result);
+#else
+        return false;
+#endif
     }
 
     UINT devCount = 0;
@@ -780,10 +791,10 @@ static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, boo
     if (ksSuccesses > 0) {
         if (isConnect) {
             // Keep busy state and flashing LED active while connection is being verified!
-            // Poll for audio endpoint to become DEVICE_STATE_ACTIVE (up to ~3.6 seconds)
+            // Poll for audio endpoint to become DEVICE_STATE_ACTIVE
             bool verified = false;
-            for (int poll = 0; poll < 24; poll++) {
-                Sleep(150);
+            for (int poll = 0; poll < KS_CONNECT_VERIFY_MAX_POLLS; poll++) {
+                Sleep(KS_CONNECT_VERIFY_POLL_MS);
                 if (is_device_audio_active(address, name)) {
                     verified = true;
                     break;
@@ -799,15 +810,19 @@ static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, boo
             }
 
             // If KS reconnect didn't activate the audio endpoint within timeout,
-            // fallback to Win32 API to complete the connection
+            // fallback to Win32 API to complete the connection if enabled
+#if ENABLE_API_HCI
             return bt_connect_device_api(address, name, result);
+#else
+            return false;
+#endif
         } else {
-            // For disconnect: verify audio endpoint drops from active (up to ~1.2 seconds)
-            for (int poll = 0; poll < 8; poll++) {
+            // For disconnect: verify audio endpoint drops from active
+            for (int poll = 0; poll < KS_DISCONNECT_VERIFY_MAX_POLLS; poll++) {
                 if (!is_device_audio_active(address, name)) {
                     break;
                 }
-                Sleep(150);
+                Sleep(KS_DISCONNECT_VERIFY_POLL_MS);
             }
 
             if (result) {
@@ -818,12 +833,16 @@ static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, boo
         }
     }
 
-    // If no KS command could be sent or all returned failure, fallback to Win32 API
+    // If no KS command could be sent or all returned failure, fallback to Win32 API if enabled
+#if ENABLE_API_HCI
     if (isConnect) {
         return bt_connect_device_api(address, name, result);
     } else {
         return bt_disconnect_device_api(address, name, result);
     }
+#else
+    return false;
+#endif
 }
 
 bool bt_connect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result) {
@@ -833,4 +852,5 @@ bool bt_connect_device_ks(const wchar_t* address, const wchar_t* name, DeviceTog
 bool bt_disconnect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result) {
     return bt_toggle_device_ks(address, name, false, result);
 }
+#endif // ENABLE_KS
 

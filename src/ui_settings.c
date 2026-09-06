@@ -1,3 +1,4 @@
+#include "config.h"
 #include "ui_settings.h"
 #include "ui_menu.h"
 #include "ui_common.h"
@@ -64,19 +65,39 @@ static SettingsHitType hit_test_settings(int x, int y) {
     // Separator
     curY += 8;
 
-    // Connect via: KS (x: 90..142) / API (x: 146..200) / UI (x: 204..252)
+    // Connect via:
     if (y >= curY && y < curY + 26) {
-        if (x >= 90 && x <= 142) return SET_HIT_CONNECT_KS;
-        if (x >= 146 && x <= 200) return SET_HIT_CONNECT_API;
-        if (x >= 204 && x <= 252) return SET_HIT_CONNECT_UI;
+        int cx = 90;
+#if ENABLE_KS
+        if (x >= cx && x <= cx + 52) return SET_HIT_CONNECT_KS;
+        cx += 56;
+#endif
+#if ENABLE_API_HCI
+        if (x >= cx && x <= cx + 54) return SET_HIT_CONNECT_API;
+        cx += 58;
+#endif
+#if ENABLE_UI
+        if (x >= cx && x <= cx + 48) return SET_HIT_CONNECT_UI;
+        cx += 52;
+#endif
     }
     curY += 28;
 
-    // Disconnect via: KS (x: 100..150) / HCI (x: 154..206) / UI (x: 210..256)
+    // Disconnect via:
     if (y >= curY && y < curY + 26) {
-        if (x >= 100 && x <= 150) return SET_HIT_DISCONNECT_KS;
-        if (x >= 154 && x <= 206) return SET_HIT_DISCONNECT_HCI;
-        if (x >= 210 && x <= 256) return SET_HIT_DISCONNECT_UI;
+        int cx = 100;
+#if ENABLE_KS
+        if (x >= cx && x <= cx + 50) return SET_HIT_DISCONNECT_KS;
+        cx += 54;
+#endif
+#if ENABLE_API_HCI
+        if (x >= cx && x <= cx + 52) return SET_HIT_DISCONNECT_HCI;
+        cx += 56;
+#endif
+#if ENABLE_UI
+        if (x >= cx && x <= cx + 46) return SET_HIT_DISCONNECT_UI;
+        cx += 50;
+#endif
     }
 
     return SET_HIT_NONE;
@@ -177,26 +198,33 @@ static void on_paint_settings(HWND hwnd) {
     RECT connLabelRc = { 12, curY, 86, curY + 24 };
     DrawTextW(memDC, L"Connect via:", -1, &connLabelRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-    // KS radio
-    RECT ksRc = { 90, curY, 142, curY + 24 };
+    int cx = 90;
+#if ENABLE_KS
+    RECT ksRc = { cx, curY, cx + 52, curY + 24 };
     if (g_hoveredHit == SET_HIT_CONNECT_KS) ui_draw_rounded_rect(memDC, &ksRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 94, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_KS, &theme);
-    RECT ksTextRc = { 113, curY, 142, curY + 24 };
+    ui_draw_radio(memDC, cx + 4, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_KS, &theme);
+    RECT ksTextRc = { cx + 23, curY, cx + 52, curY + 24 };
     DrawTextW(memDC, L"KS", -1, &ksTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    cx += 56;
+#endif
 
-    // API radio
-    RECT apiRc = { 146, curY, 200, curY + 24 };
+#if ENABLE_API_HCI
+    RECT apiRc = { cx, curY, cx + 54, curY + 24 };
     if (g_hoveredHit == SET_HIT_CONNECT_API) ui_draw_rounded_rect(memDC, &apiRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 150, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_API, &theme);
-    RECT apiTextRc = { 169, curY, 200, curY + 24 };
+    ui_draw_radio(memDC, cx + 4, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_API, &theme);
+    RECT apiTextRc = { cx + 23, curY, cx + 54, curY + 24 };
     DrawTextW(memDC, L"API", -1, &apiTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    cx += 58;
+#endif
 
-    // UI radio
-    RECT uiRc = { 204, curY, 252, curY + 24 };
+#if ENABLE_UI
+    RECT uiRc = { cx, curY, cx + 48, curY + 24 };
     if (g_hoveredHit == SET_HIT_CONNECT_UI) ui_draw_rounded_rect(memDC, &uiRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 208, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_UI, &theme);
-    RECT uiTextRc = { 227, curY, 252, curY + 24 };
+    ui_draw_radio(memDC, cx + 4, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_UI, &theme);
+    RECT uiTextRc = { cx + 23, curY, cx + 48, curY + 24 };
     DrawTextW(memDC, L"UI", -1, &uiTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    cx += 52;
+#endif
 
     curY += 28;
 
@@ -204,26 +232,33 @@ static void on_paint_settings(HWND hwnd) {
     RECT disconnLabelRc = { 12, curY, 96, curY + 24 };
     DrawTextW(memDC, L"Disconnect via:", -1, &disconnLabelRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-    // KS radio
-    RECT dksRc = { 100, curY, 150, curY + 24 };
+    int dcx = 100;
+#if ENABLE_KS
+    RECT dksRc = { dcx, curY, dcx + 50, curY + 24 };
     if (g_hoveredHit == SET_HIT_DISCONNECT_KS) ui_draw_rounded_rect(memDC, &dksRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 104, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_KS, &theme);
-    RECT dksTextRc = { 123, curY, 150, curY + 24 };
+    ui_draw_radio(memDC, dcx + 4, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_KS, &theme);
+    RECT dksTextRc = { dcx + 23, curY, dcx + 50, curY + 24 };
     DrawTextW(memDC, L"KS", -1, &dksTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    dcx += 54;
+#endif
 
-    // HCI radio
-    RECT hciRc = { 154, curY, 206, curY + 24 };
+#if ENABLE_API_HCI
+    RECT hciRc = { dcx, curY, dcx + 52, curY + 24 };
     if (g_hoveredHit == SET_HIT_DISCONNECT_HCI) ui_draw_rounded_rect(memDC, &hciRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 158, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_HCI, &theme);
-    RECT hciTextRc = { 177, curY, 206, curY + 24 };
+    ui_draw_radio(memDC, dcx + 4, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_HCI, &theme);
+    RECT hciTextRc = { dcx + 23, curY, dcx + 52, curY + 24 };
     DrawTextW(memDC, L"HCI", -1, &hciTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    dcx += 56;
+#endif
 
-    // UI radio
-    RECT ui2Rc = { 210, curY, 256, curY + 24 };
+#if ENABLE_UI
+    RECT ui2Rc = { dcx, curY, dcx + 46, curY + 24 };
     if (g_hoveredHit == SET_HIT_DISCONNECT_UI) ui_draw_rounded_rect(memDC, &ui2Rc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, 214, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_UI, &theme);
-    RECT ui2TextRc = { 233, curY, 256, curY + 24 };
+    ui_draw_radio(memDC, dcx + 4, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_UI, &theme);
+    RECT ui2TextRc = { dcx + 23, curY, dcx + 46, curY + 24 };
     DrawTextW(memDC, L"UI", -1, &ui2TextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    dcx += 50;
+#endif
 
     // Outer border
     HPEN outPen = CreatePen(PS_SOLID, 1, theme.separator);
@@ -297,39 +332,42 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 g_appState.sendMediaPauseOnDisconnect = !g_appState.sendMediaPauseOnDisconnect;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+#if ENABLE_KS
             } else if (hit == SET_HIT_CONNECT_KS) {
                 g_appState.connectMethod = CONNECT_METHOD_KS;
-                g_appState.useUiaConnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+#endif
+#if ENABLE_API_HCI
             } else if (hit == SET_HIT_CONNECT_API) {
                 g_appState.connectMethod = CONNECT_METHOD_API;
-                g_appState.useUiaConnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+#endif
+#if ENABLE_UI
             } else if (hit == SET_HIT_CONNECT_UI) {
                 g_appState.connectMethod = CONNECT_METHOD_UI;
-                g_appState.useUiaConnect = true;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+#endif
+#if ENABLE_KS
             } else if (hit == SET_HIT_DISCONNECT_KS) {
                 g_appState.disconnectMethod = DISCONNECT_METHOD_KS;
-                g_appState.useHciDisconnect = false;
-                g_appState.useUiaDisconnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+#endif
+#if ENABLE_API_HCI
             } else if (hit == SET_HIT_DISCONNECT_HCI) {
                 g_appState.disconnectMethod = DISCONNECT_METHOD_HCI;
-                g_appState.useHciDisconnect = true;
-                g_appState.useUiaDisconnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+#endif
+#if ENABLE_UI
             } else if (hit == SET_HIT_DISCONNECT_UI) {
                 g_appState.disconnectMethod = DISCONNECT_METHOD_UI;
-                g_appState.useHciDisconnect = false;
-                g_appState.useUiaDisconnect = true;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
+#endif
             }
             return 0;
         }
@@ -408,7 +446,8 @@ void ui_settings_show(void) {
 
     POINT pt = { menuRc.left, menuRc.top };
     HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO mi = { sizeof(MONITORINFO) };
+    MONITORINFO mi = { 0 };
+    mi.cbSize = sizeof(MONITORINFO);
     GetMonitorInfoW(hMon, &mi);
     RECT work = mi.rcWork;
 

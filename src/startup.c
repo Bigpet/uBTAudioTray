@@ -1,3 +1,5 @@
+#include "config.h"
+#include <windows.h>
 #include "startup.h"
 #include <stdio.h>
 

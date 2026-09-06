@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include <windows.h>
 #include <stdbool.h>
 #include "app_state.h"
