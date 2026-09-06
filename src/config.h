@@ -8,11 +8,11 @@
 // Application Information
 // ============================================================================
 #ifndef APP_VERSION_STR
-#define APP_VERSION_STR "1.0.1"
+#define APP_VERSION_STR "1.0.2"
 #endif
 
 #ifndef APP_VERSION_WIDE
-#define APP_VERSION_WIDE L"1.0.1"
+#define APP_VERSION_WIDE L"1.0.2"
 #endif
 
 // ============================================================================
@@ -119,6 +119,14 @@
 #define UIA_POST_CLICK_CONFIRM_POLL_MS      150
 #endif
 
+#ifndef UIA_LANDMARK_TIMEOUT_MS
+#define UIA_LANDMARK_TIMEOUT_MS             2000
+#endif
+
+#ifndef UIA_SCROLL_PAGEDOWN_DELAY_MS
+#define UIA_SCROLL_PAGEDOWN_DELAY_MS        600
+#endif
+
 #ifndef UIA_CLOSE_DELAY_CONFIRMED_MS
 #define UIA_CLOSE_DELAY_CONFIRMED_MS        180
 #endif
@@ -126,3 +134,4 @@
 #ifndef UIA_CLOSE_DELAY_UNCONFIRMED_MS
 #define UIA_CLOSE_DELAY_UNCONFIRMED_MS      120
 #endif
+

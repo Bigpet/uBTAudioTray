@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(uBTAudioTray VERSION 1.0.1 LANGUAGES C)
+project(uBTAudioTray VERSION 1.0.2 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -64,6 +64,7 @@ target_link_libraries(uBTAudioTray PRIVATE
     dwmapi
     comctl32
     ole32
+    gdiplus
 )
 
 if(ENABLE_UI)

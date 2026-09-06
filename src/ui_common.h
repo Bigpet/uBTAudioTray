@@ -22,6 +22,9 @@ typedef enum {
     TASKBAR_EDGE_BOTTOM
 } TaskbarEdge;
 
+void ui_common_init(void);
+void ui_common_cleanup(void);
+
 TaskbarEdge ui_get_taskbar_edge(POINT pt, RECT* outWorkArea);
 void ui_position_window(HWND hwnd, int anchorX, int anchorY, int width, int height);
 void ui_enable_rounded_corners(HWND hwnd);
