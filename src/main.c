@@ -90,7 +90,7 @@ static void show_tray_notification(const wchar_t* title, const wchar_t* message)
     NOTIFYICONDATAW nid = g_nid;
     nid.uFlags |= NIF_INFO;
     nid.dwInfoFlags = NIIF_INFO;
-    nid.uTimeout = 3000;
+    nid.uTimeout = TRAY_NOTIFICATION_TIMEOUT_MS;
     wcscpy_s(nid.szInfoTitle, sizeof(nid.szInfoTitle) / sizeof(wchar_t), title);
     wcscpy_s(nid.szInfo, sizeof(nid.szInfo) / sizeof(wchar_t), message);
     Shell_NotifyIconW(NIM_MODIFY, &nid);
@@ -130,7 +130,7 @@ static void set_busy_state(bool isBusy) {
         g_blinkState = true;
         g_nid.hIcon = g_hIconConnecting;
         Shell_NotifyIconW(NIM_MODIFY, &g_nid);
-        SetTimer(g_hHiddenWnd, TIMER_BUSY_BLINK, 250, NULL);
+        SetTimer(g_hHiddenWnd, TIMER_BUSY_BLINK, TRAY_BUSY_BLINK_INTERVAL_MS, NULL);
     } else {
         KillTimer(g_hHiddenWnd, TIMER_BUSY_BLINK);
         g_blinkState = false;
@@ -194,7 +194,7 @@ static DWORD WINAPI worker_poll_settled(LPVOID lpParam) {
     memset(res, 0, sizeof(ScanResult));
 
     bool settled = false;
-    for (int attempt = 0; attempt < 8; attempt++) {
+    for (int attempt = 0; attempt < SETTLED_POLL_MAX_ATTEMPTS; attempt++) {
         // If a new action has been queued, abort settled poll early
         EnterCriticalSection(&g_queue.cs);
         bool busyAgain = (g_queue.hasCurrent || g_queue.count > 0);
@@ -221,7 +221,7 @@ static DWORD WINAPI worker_poll_settled(LPVOID lpParam) {
         }
 
         if (settled) break;
-        Sleep(350);
+        Sleep(SETTLED_POLL_INTERVAL_MS);
     }
 
     if (toggleRes) free(toggleRes);
@@ -478,7 +478,7 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
         case WM_APP_ENDPOINT_CHANGED:
             if (!g_isBusy) {
                 // Debounce rapid arrival/removal events across render/capture endpoints
-                SetTimer(hwnd, TIMER_DEBOUNCE_SCAN, 150, NULL);
+                SetTimer(hwnd, TIMER_DEBOUNCE_SCAN, ENDPOINT_DEBOUNCE_SCAN_MS, NULL);
             }
             return 0;
 
@@ -584,7 +584,7 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 
             // Media control
             if (g_batchHadConnect && g_appState.sendMediaPlayOnConnect) {
-                Sleep(500);
+                Sleep(MEDIA_CONTROL_DELAY_MS);
                 media_send_toggle();
             } else if (g_batchHadDisconnect && g_appState.sendMediaPauseOnDisconnect) {
                 media_send_toggle();

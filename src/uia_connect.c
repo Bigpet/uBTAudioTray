@@ -12,13 +12,6 @@
 static const GUID CLSID_CUIAutomation_Local = { 0xff48dba4, 0x60ef, 0x4201, { 0xaa, 0x87, 0x54, 0x10, 0x3e, 0xef, 0x59, 0x4e } };
 static const GUID IID_IUIAutomation_Local   = { 0x30cbe57d, 0xd9d0, 0x452a, { 0xab, 0x13, 0x7a, 0xc5, 0xac, 0x48, 0x25, 0xee } };
 
-#define SETTINGS_WINDOW_TIMEOUT_MS  8000
-#define BUTTON_READY_TIMEOUT_MS     6000
-#define INITIAL_SETTLE_DELAY_MS      200
-#define READY_POLL_INTERVAL_MS       200
-#define POST_CLICK_CONFIRM_TIMEOUT   900
-#define POST_CLICK_CONFIRM_POLL      150
-
 typedef struct {
     HWND hWnd;
 } FindSettingsData;
@@ -52,7 +45,7 @@ static HWND wait_for_settings_hwnd(DWORD timeoutMs) {
     while (GetTickCount64() - start < timeoutMs) {
         HWND h = find_settings_hwnd();
         if (h) return h;
-        Sleep(250);
+        Sleep(UIA_FIND_WINDOW_POLL_MS);
     }
     return NULL;
 }
@@ -207,7 +200,7 @@ static bool uia_invoke_device_action(const wchar_t* deviceName, const wchar_t* d
         return false;
     }
 
-    HWND hSettings = wait_for_settings_hwnd(SETTINGS_WINDOW_TIMEOUT_MS);
+    HWND hSettings = wait_for_settings_hwnd(UIA_SETTINGS_WINDOW_TIMEOUT_MS);
     if (!hSettings) {
         pAutomation->lpVtbl->Release(pAutomation);
         if (mustUninit) CoUninitialize();
@@ -227,16 +220,16 @@ static bool uia_invoke_device_action(const wchar_t* deviceName, const wchar_t* d
     }
 
     // Wait for landmark ("Add device" or "Devices") or brief settle
-    Sleep(INITIAL_SETTLE_DELAY_MS);
+    Sleep(UIA_INITIAL_SETTLE_DELAY_MS);
 
     // Nudge WinUI device list virtualization
     try_send_end_key(hSettings);
-    Sleep(INITIAL_SETTLE_DELAY_MS);
+    Sleep(UIA_INITIAL_SETTLE_DELAY_MS);
 
     // Poll for the clickable button
     IUIAutomationElement* pActionBtn = NULL;
     ULONGLONG pollStart = GetTickCount64();
-    while (GetTickCount64() - pollStart < BUTTON_READY_TIMEOUT_MS) {
+    while (GetTickCount64() - pollStart < UIA_BUTTON_READY_TIMEOUT_MS) {
         IUIAutomationElement* pDevEl = find_element_by_name(pAutomation, pWinEl, deviceName);
         if (pDevEl) {
             try_scroll_into_view(pDevEl);
@@ -253,7 +246,7 @@ static bool uia_invoke_device_action(const wchar_t* deviceName, const wchar_t* d
         } else {
             try_send_end_key(hSettings);
         }
-        Sleep(READY_POLL_INTERVAL_MS);
+        Sleep(UIA_READY_POLL_INTERVAL_MS);
     }
 
     if (!pActionBtn) {
@@ -282,7 +275,7 @@ static bool uia_invoke_device_action(const wchar_t* deviceName, const wchar_t* d
     const wchar_t* expectedOpposite = (_wcsicmp(action, L"Connect") == 0) ? L"Disconnect" : L"Connect";
     bool confirmed = false;
     ULONGLONG confirmStart = GetTickCount64();
-    while (GetTickCount64() - confirmStart < POST_CLICK_CONFIRM_TIMEOUT) {
+    while (GetTickCount64() - confirmStart < UIA_POST_CLICK_CONFIRM_TIMEOUT_MS) {
         IUIAutomationElement* pDevEl = find_element_by_name(pAutomation, pWinEl, deviceName);
         if (pDevEl) {
             IUIAutomationElement* nextBtn = search_for_button_ancestors(pAutomation, pDevEl, expectedOpposite);
@@ -303,7 +296,7 @@ static bool uia_invoke_device_action(const wchar_t* deviceName, const wchar_t* d
             if (prevBtn) prevBtn->lpVtbl->Release(prevBtn);
             pDevEl->lpVtbl->Release(pDevEl);
         }
-        Sleep(POST_CLICK_CONFIRM_POLL);
+        Sleep(UIA_POST_CLICK_CONFIRM_POLL_MS);
     }
 
     pWinEl->lpVtbl->Release(pWinEl);
@@ -311,7 +304,7 @@ static bool uia_invoke_device_action(const wchar_t* deviceName, const wchar_t* d
 
     // Auto-close Settings window if we opened it
     if (!hadSettingsWindow) {
-        Sleep(confirmed ? 180 : 120);
+        Sleep(confirmed ? UIA_CLOSE_DELAY_CONFIRMED_MS : UIA_CLOSE_DELAY_UNCONFIRMED_MS);
         PostMessageW(hSettings, WM_CLOSE, 0, 0);
     }
 

@@ -11,7 +11,7 @@
 #include <functiondiscoverykeys_devpkey.h>
 
 #define IOCTL_BTH_DISCONNECT_DEVICE 0x41000c
-#define CACHE_TTL_MS 45000
+#define CACHE_TTL_MS BT_SERVICE_CACHE_TTL_MS
 #define MAX_CACHED_SERVICES 16
 #define MAX_CACHE_ENTRIES 32
 
@@ -791,10 +791,10 @@ static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, boo
     if (ksSuccesses > 0) {
         if (isConnect) {
             // Keep busy state and flashing LED active while connection is being verified!
-            // Poll for audio endpoint to become DEVICE_STATE_ACTIVE (up to ~3.6 seconds)
+            // Poll for audio endpoint to become DEVICE_STATE_ACTIVE
             bool verified = false;
-            for (int poll = 0; poll < 24; poll++) {
-                Sleep(150);
+            for (int poll = 0; poll < KS_CONNECT_VERIFY_MAX_POLLS; poll++) {
+                Sleep(KS_CONNECT_VERIFY_POLL_MS);
                 if (is_device_audio_active(address, name)) {
                     verified = true;
                     break;
@@ -817,12 +817,12 @@ static bool bt_toggle_device_ks(const wchar_t* address, const wchar_t* name, boo
             return false;
 #endif
         } else {
-            // For disconnect: verify audio endpoint drops from active (up to ~1.2 seconds)
-            for (int poll = 0; poll < 8; poll++) {
+            // For disconnect: verify audio endpoint drops from active
+            for (int poll = 0; poll < KS_DISCONNECT_VERIFY_MAX_POLLS; poll++) {
                 if (!is_device_audio_active(address, name)) {
                     break;
                 }
-                Sleep(150);
+                Sleep(KS_DISCONNECT_VERIFY_POLL_MS);
             }
 
             if (result) {
