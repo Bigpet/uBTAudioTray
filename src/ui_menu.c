@@ -6,10 +6,10 @@
 #include <stdio.h>
 #include <math.h>
 
-#define WINDOW_WIDTH 300
-#define HEADER_HEIGHT 38
-#define ROW_HEIGHT 36
-#define FOOTER_HEIGHT 34
+#define BASE_WINDOW_WIDTH 300
+#define BASE_HEADER_HEIGHT 38
+#define BASE_ROW_HEIGHT 36
+#define BASE_FOOTER_HEIGHT 34
 #define TIMER_SPINNER 2001
 
 typedef enum {
@@ -33,6 +33,7 @@ typedef struct {
 
 static HWND g_hMenuWnd = NULL;
 static HWND g_hTrayWnd = NULL;
+static UINT g_currentDpi = 96;
 static HFONT g_hFontNormal = NULL;
 static HFONT g_hFontBold = NULL;
 static HFONT g_hFontSmall = NULL;
@@ -56,43 +57,78 @@ static bool g_trackingMouse = false;
 
 extern AppState g_appState;
 
-static int calculate_window_height(void) {
+static void update_menu_fonts(UINT dpi) {
+    if (g_hFontNormal) DeleteObject(g_hFontNormal);
+    if (g_hFontBold)   DeleteObject(g_hFontBold);
+    if (g_hFontSmall)  DeleteObject(g_hFontSmall);
+    if (g_hFontGear)   DeleteObject(g_hFontGear);
+
+    g_hFontNormal = ui_get_font_for_dpi(-12, false, dpi);
+    g_hFontBold   = ui_get_font_for_dpi(-12, true, dpi);
+    g_hFontSmall  = ui_get_font_for_dpi(-11, false, dpi);
+    g_hFontGear   = CreateFontW(
+        -ui_scale(16, dpi), 0, 0, 0,
+        FW_NORMAL,
+        FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE,
+        L"Segoe UI Symbol");
+    g_currentDpi = dpi;
+}
+
+static int calculate_window_height(UINT dpi) {
     int rows = (g_deviceCount > 0) ? g_deviceCount : 1;
-    return HEADER_HEIGHT + 6 + (rows * ROW_HEIGHT) + 8 + FOOTER_HEIGHT + 8;
+    int headerH = ui_scale(BASE_HEADER_HEIGHT, dpi);
+    int rowH = ui_scale(BASE_ROW_HEIGHT, dpi);
+    int footerH = ui_scale(BASE_FOOTER_HEIGHT, dpi);
+    int pad6 = ui_scale(6, dpi);
+    int pad8 = ui_scale(8, dpi);
+    return headerH + pad6 + (rows * rowH) + pad8 + footerH + pad8;
 }
 
 static HitTestResult hit_test(int x, int y) {
     HitTestResult res = { HIT_NONE, -1 };
-    int width = WINDOW_WIDTH;
+    UINT dpi = g_currentDpi;
+    RECT clientRc;
+    GetClientRect(g_hMenuWnd, &clientRc);
+    int width = clientRc.right - clientRc.left;
+    if (width <= 0) width = ui_scale(BASE_WINDOW_WIDTH, dpi);
+
+    int headerH = ui_scale(BASE_HEADER_HEIGHT, dpi);
+    int rowH = ui_scale(BASE_ROW_HEIGHT, dpi);
+    int footerH = ui_scale(BASE_FOOTER_HEIGHT, dpi);
 
     // Header buttons
-    if (y >= 4 && y <= HEADER_HEIGHT) {
+    if (y >= ui_scale(4, dpi) && y <= headerH) {
         // Exit button: rightmost (width ~46px)
-        if (x >= width - 56 && x <= width - 10) {
+        if (x >= width - ui_scale(56, dpi) && x <= width - ui_scale(10, dpi)) {
             res.type = HIT_EXIT;
             return res;
         }
         // Gear button: ~width - 88 .. width - 60
-        if (x >= width - 88 && x <= width - 60) {
+        if (x >= width - ui_scale(88, dpi) && x <= width - ui_scale(60, dpi)) {
             res.type = HIT_GEAR;
             return res;
         }
     }
 
-    int devStartY = HEADER_HEIGHT + 6;
+    int devStartY = headerH + ui_scale(6, dpi);
     if (g_deviceCount > 0) {
         for (int i = 0; i < g_deviceCount; i++) {
-            int top = devStartY + (i * ROW_HEIGHT);
-            int bottom = top + ROW_HEIGHT;
+            int top = devStartY + (i * rowH);
+            int bottom = top + rowH;
             if (y >= top && y < bottom) {
                 // Action button: x: width - 88 .. width - 10
-                if (x >= width - 88 && x <= width - 10) {
+                if (x >= width - ui_scale(88, dpi) && x <= width - ui_scale(10, dpi)) {
                     res.type = HIT_DEVICE_BTN;
                     res.index = i;
                     return res;
                 }
                 // Checkbox & device name: x: 6 .. width - 96
-                if (x >= 6 && x < width - 96) {
+                if (x >= ui_scale(6, dpi) && x < width - ui_scale(96, dpi)) {
                     res.type = HIT_DEVICE_CHECK;
                     res.index = i;
                     return res;
@@ -102,9 +138,9 @@ static HitTestResult hit_test(int x, int y) {
     }
 
     // Footer settings link
-    int footerTop = devStartY + ((g_deviceCount > 0 ? g_deviceCount : 1) * ROW_HEIGHT) + 8;
-    if (y >= footerTop && y <= footerTop + FOOTER_HEIGHT) {
-        if (x >= 6 && x <= width - 6) {
+    int footerTop = devStartY + ((g_deviceCount > 0 ? g_deviceCount : 1) * rowH) + ui_scale(8, dpi);
+    if (y >= footerTop && y <= footerTop + footerH) {
+        if (x >= ui_scale(6, dpi) && x <= width - ui_scale(6, dpi)) {
             res.type = HIT_SETTINGS_LINK;
             return res;
         }
@@ -137,19 +173,25 @@ static void on_paint(HWND hwnd) {
 
     SetBkMode(memDC, TRANSPARENT);
 
+    UINT dpi = g_currentDpi;
+    int headerH = ui_scale(BASE_HEADER_HEIGHT, dpi);
+    int rowH = ui_scale(BASE_ROW_HEIGHT, dpi);
+    int footerH = ui_scale(BASE_FOOTER_HEIGHT, dpi);
+
     // 1. Header: "BT Audio Devices"
     SelectObject(memDC, g_hFontBold);
     SetTextColor(memDC, theme.fg);
-    RECT titleRc = { 12, 8, width - 100, HEADER_HEIGHT };
+    RECT titleRc = { ui_scale(12, dpi), ui_scale(8, dpi), width - ui_scale(100, dpi), headerH };
     DrawTextW(memDC, L"BT Audio Devices", -1, &titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // Header Spinner (when any action is busy)
     if (g_isBusy) {
         SIZE textSize;
         GetTextExtentPoint32W(memDC, L"BT Audio Devices", 16, &textSize);
-        int cx = 12 + textSize.cx + 12;
-        int cy = HEADER_HEIGHT / 2 + 1;
-        double r = 5.5;
+        int cx = ui_scale(12, dpi) + textSize.cx + ui_scale(12, dpi);
+        int cy = headerH / 2 + 1;
+        double r = (double)ui_scale(6, dpi);
+        int dotSize = (dpi >= 144) ? 2 : 1;
         for (int k = 0; k < 8; k++) {
             double angle = k * (3.141592653589793 / 4.0);
             int px = cx + (int)(r * cos(angle) + 0.5);
@@ -167,7 +209,7 @@ static void on_paint(HWND hwnd) {
             HPEN hNullPen = (HPEN)GetStockObject(NULL_PEN);
             HBRUSH hOldB = (HBRUSH)SelectObject(memDC, hDotBrush);
             HPEN hOldP = (HPEN)SelectObject(memDC, hNullPen);
-            Ellipse(memDC, px - 1, py - 1, px + 2, py + 2);
+            Ellipse(memDC, px - dotSize, py - dotSize, px + dotSize + 1, py + dotSize + 1);
             SelectObject(memDC, hOldB);
             SelectObject(memDC, hOldP);
             DeleteObject(hDotBrush);
@@ -175,17 +217,17 @@ static void on_paint(HWND hwnd) {
     }
 
     // Gear Icon Button
-    RECT gearRc = { width - 88, 5, width - 60, 33 };
+    RECT gearRc = { width - ui_scale(88, dpi), ui_scale(5, dpi), width - ui_scale(60, dpi), ui_scale(33, dpi) };
     if (g_hoveredHit.type == HIT_GEAR) {
-        ui_draw_rounded_rect(memDC, &gearRc, 4, theme.rowHover, theme.separator);
+        ui_draw_rounded_rect(memDC, &gearRc, ui_scale(4, dpi), theme.rowHover, theme.separator);
     }
     SelectObject(memDC, g_hFontGear);
     DrawTextW(memDC, L"\u2699", -1, &gearRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     // Exit Button
-    RECT exitRc = { width - 56, 7, width - 10, 31 };
+    RECT exitRc = { width - ui_scale(56, dpi), ui_scale(7, dpi), width - ui_scale(10, dpi), ui_scale(31, dpi) };
     COLORREF exitBg = (g_hoveredHit.type == HIT_EXIT) ? theme.btnHover : theme.btnBg;
-    ui_draw_rounded_rect(memDC, &exitRc, 4, exitBg, theme.btnBorder);
+    ui_draw_rounded_rect(memDC, &exitRc, ui_scale(4, dpi), exitBg, theme.btnBorder);
     SelectObject(memDC, g_hFontNormal);
     SetTextColor(memDC, theme.fg);
     DrawTextW(memDC, L"Exit", -1, &exitRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -193,48 +235,49 @@ static void on_paint(HWND hwnd) {
     // Header Separator
     HPEN sepPen = CreatePen(PS_SOLID, 1, theme.separator);
     HPEN oldPen = (HPEN)SelectObject(memDC, sepPen);
-    MoveToEx(memDC, 10, HEADER_HEIGHT + 2, NULL);
-    LineTo(memDC, width - 10, HEADER_HEIGHT + 2);
+    MoveToEx(memDC, ui_scale(10, dpi), headerH + ui_scale(2, dpi), NULL);
+    LineTo(memDC, width - ui_scale(10, dpi), headerH + ui_scale(2, dpi));
 
     // 2. Devices
-    int curY = HEADER_HEIGHT + 6;
+    int curY = headerH + ui_scale(6, dpi);
     if (g_deviceCount == 0) {
         SelectObject(memDC, g_hFontNormal);
         SetTextColor(memDC, theme.subtext);
-        RECT emptyRc = { 14, curY, width - 14, curY + ROW_HEIGHT };
+        RECT emptyRc = { ui_scale(14, dpi), curY, width - ui_scale(14, dpi), curY + rowH };
         DrawTextW(memDC, L"No Bluetooth Audio Devices found!", -1, &emptyRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-        curY += ROW_HEIGHT;
+        curY += rowH;
     } else {
+        int checkSize = ui_scale(14, dpi);
+        int statusSize = ui_scale(13, dpi);
         for (int i = 0; i < g_deviceCount; i++) {
             BluetoothAudioDevice* dev = &g_devices[i];
-            int rowTop = curY + (i * ROW_HEIGHT);
+            int rowTop = curY + (i * rowH);
 
             DeviceBusyState busy = ui_menu_get_device_busy(dev->address);
             bool isBusyAction = (busy != DEVICE_BUSY_NONE);
 
             // Row hover background on checkbox + text
-            RECT checkTextRc = { 6, rowTop + 2, width - 96, rowTop + ROW_HEIGHT - 2 };
+            RECT checkTextRc = { ui_scale(6, dpi), rowTop + ui_scale(2, dpi), width - ui_scale(96, dpi), rowTop + rowH - ui_scale(2, dpi) };
             if (g_hoveredHit.type == HIT_DEVICE_CHECK && g_hoveredHit.index == i) {
-                ui_draw_rounded_rect(memDC, &checkTextRc, 4, theme.rowHover, CLR_INVALID);
+                ui_draw_rounded_rect(memDC, &checkTextRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
             }
 
             // Checkbox
             bool isSel = app_state_is_selected(&g_appState, dev->address);
-            ui_draw_checkbox(memDC, 12, rowTop + ((ROW_HEIGHT - 14) / 2), 14, isSel, &theme);
+            ui_draw_checkbox(memDC, ui_scale(12, dpi), rowTop + ((rowH - checkSize) / 2), checkSize, isSel, &theme);
 
             // Device Name
             SelectObject(memDC, g_hFontNormal);
             SetTextColor(memDC, theme.fg);
-            RECT nameRc = { 34, rowTop, width - 120, rowTop + ROW_HEIGHT };
+            RECT nameRc = { ui_scale(34, dpi), rowTop, width - ui_scale(120, dpi), rowTop + rowH };
             DrawTextW(memDC, dev->displayName, -1, &nameRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
-            // Connection Status indicator (dot) - 13px
-            // If connecting, pulse status indicator between disconnected and connected colors!
+            // Connection Status indicator (dot)
             bool showConnected = dev->isConnected;
             if (busy == DEVICE_BUSY_CONNECTING) {
                 showConnected = (g_spinnerFrame % 2 == 0);
             }
-            ui_draw_status_indicator(memDC, width - 112, rowTop + ((ROW_HEIGHT - 13) / 2), 13, showConnected, &theme);
+            ui_draw_status_indicator(memDC, width - ui_scale(112, dpi), rowTop + ((rowH - statusSize) / 2), statusSize, showConnected, &theme);
 
             // Action Button
             const wchar_t* btnLabel;
@@ -248,34 +291,34 @@ static void on_paint(HWND hwnd) {
                 btnLabel = dev->isConnected ? L"Disconnect" : L"Connect";
             }
 
-            RECT btnRc = { width - 88, rowTop + 4, width - 10, rowTop + ROW_HEIGHT - 4 };
+            RECT btnRc = { width - ui_scale(88, dpi), rowTop + ui_scale(4, dpi), width - ui_scale(10, dpi), rowTop + rowH - ui_scale(4, dpi) };
             bool isBtnHover = (!isBusyAction && g_hoveredHit.type == HIT_DEVICE_BTN && g_hoveredHit.index == i);
             COLORREF btnBg = isBtnHover ? theme.btnHover : theme.btnBg;
-            ui_draw_rounded_rect(memDC, &btnRc, 4, btnBg, theme.btnBorder);
+            ui_draw_rounded_rect(memDC, &btnRc, ui_scale(4, dpi), btnBg, theme.btnBorder);
 
             SelectObject(memDC, g_hFontSmall);
             SetTextColor(memDC, isBusyAction ? theme.subtext : theme.fg);
             DrawTextW(memDC, btnLabel, -1, &btnRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
-        curY += g_deviceCount * ROW_HEIGHT;
+        curY += g_deviceCount * rowH;
     }
 
     // Separator above footer
-    curY += 4;
-    MoveToEx(memDC, 10, curY, NULL);
-    LineTo(memDC, width - 10, curY);
+    curY += ui_scale(4, dpi);
+    MoveToEx(memDC, ui_scale(10, dpi), curY, NULL);
+    LineTo(memDC, width - ui_scale(10, dpi), curY);
     SelectObject(memDC, oldPen);
     DeleteObject(sepPen);
 
     // 3. Footer link: "Open Bluetooth & Devices Settings"
-    curY += 4;
-    RECT footerRc = { 6, curY, width - 6, curY + FOOTER_HEIGHT };
+    curY += ui_scale(4, dpi);
+    RECT footerRc = { ui_scale(6, dpi), curY, width - ui_scale(6, dpi), curY + footerH };
     if (g_hoveredHit.type == HIT_SETTINGS_LINK) {
-        ui_draw_rounded_rect(memDC, &footerRc, 4, theme.rowHover, CLR_INVALID);
+        ui_draw_rounded_rect(memDC, &footerRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
     }
     SelectObject(memDC, g_hFontNormal);
     SetTextColor(memDC, theme.fg);
-    RECT footerTextRc = { 12, curY, width - 12, curY + FOOTER_HEIGHT };
+    RECT footerTextRc = { ui_scale(12, dpi), curY, width - ui_scale(12, dpi), curY + footerH };
     DrawTextW(memDC, L"Open Bluetooth & Devices Settings", -1, &footerTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // Outer subtle border
@@ -283,7 +326,7 @@ static void on_paint(HWND hwnd) {
     oldPen = (HPEN)SelectObject(memDC, outPen);
     HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
     HBRUSH oldB = (HBRUSH)SelectObject(memDC, nullBrush);
-    RoundRect(memDC, 0, 0, width, height, 8, 8);
+    RoundRect(memDC, 0, 0, width, height, ui_scale(8, dpi), ui_scale(8, dpi));
     SelectObject(memDC, oldB);
     SelectObject(memDC, oldPen);
     DeleteObject(outPen);
@@ -299,6 +342,18 @@ static void on_paint(HWND hwnd) {
 
 static LRESULT CALLBACK menu_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_DPICHANGED: {
+            UINT newDpi = HIWORD(wParam);
+            update_menu_fonts(newDpi);
+            RECT* prc = (RECT*)lParam;
+            if (prc) {
+                SetWindowPos(hwnd, NULL, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            InvalidateRect(hwnd, NULL, TRUE);
+            return 0;
+        }
+
         case WM_PAINT:
             on_paint(hwnd);
             return 0;
@@ -412,24 +467,12 @@ void ui_menu_init(HINSTANCE hInstance, HWND hTrayWnd) {
         wc.lpszClassName,
         L"uBTAudioTray Menu",
         WS_POPUP,
-        0, 0, WINDOW_WIDTH, 100,
+        0, 0, BASE_WINDOW_WIDTH, 100,
         NULL, NULL, hInstance, NULL);
 
     ui_enable_rounded_corners(g_hMenuWnd);
 
-    g_hFontNormal = ui_get_font(-12, false);
-    g_hFontBold   = ui_get_font(-12, true);
-    g_hFontSmall  = ui_get_font(-11, false);
-    g_hFontGear   = CreateFontW(
-        -16, 0, 0, 0,
-        FW_NORMAL,
-        FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE,
-        L"Segoe UI Symbol");
+    update_menu_fonts(ui_get_window_dpi(g_hMenuWnd));
 }
 
 void ui_menu_cleanup(void) {
@@ -451,8 +494,15 @@ HWND ui_menu_get_hwnd(void) {
 void ui_menu_show(int anchorX, int anchorY) {
     if (!g_hMenuWnd) return;
 
-    int height = calculate_window_height();
-    ui_position_window(g_hMenuWnd, anchorX, anchorY, WINDOW_WIDTH, height);
+    POINT pt = { anchorX, anchorY };
+    UINT dpi = ui_get_point_dpi(pt);
+    if (dpi != g_currentDpi || !g_hFontNormal) {
+        update_menu_fonts(dpi);
+    }
+
+    int width = ui_scale(BASE_WINDOW_WIDTH, dpi);
+    int height = calculate_window_height(dpi);
+    ui_position_window(g_hMenuWnd, anchorX, anchorY, width, height);
 
     if (g_isBusy) {
         SetTimer(g_hMenuWnd, TIMER_SPINNER, UI_SPINNER_TIMER_MS, NULL);
@@ -488,11 +538,21 @@ void ui_menu_update_devices(const BluetoothAudioDevice* devices, int count) {
     if (devices && count > 0) {
         memcpy(g_devices, devices, count * sizeof(BluetoothAudioDevice));
     }
+
+    // Prune unseen devices from selection
+    wchar_t activeAddrs[MAX_BT_DEVICES][MAC_ADDR_LEN];
+    for (int i = 0; i < count; i++) {
+        wcsncpy_s(activeAddrs[i], MAC_ADDR_LEN, g_devices[i].address, _TRUNCATE);
+    }
+    app_state_prune_unseen(&g_appState, activeAddrs, count);
+
     if (g_hMenuWnd && IsWindowVisible(g_hMenuWnd)) {
+        UINT dpi = g_currentDpi;
         RECT rc;
         GetWindowRect(g_hMenuWnd, &rc);
-        int height = calculate_window_height();
-        SetWindowPos(g_hMenuWnd, HWND_TOPMOST, rc.left, rc.top, WINDOW_WIDTH, height, SWP_NOACTIVATE);
+        int width = ui_scale(BASE_WINDOW_WIDTH, dpi);
+        int height = calculate_window_height(dpi);
+        SetWindowPos(g_hMenuWnd, HWND_TOPMOST, rc.left, rc.top, width, height, SWP_NOACTIVATE);
         InvalidateRect(g_hMenuWnd, NULL, TRUE);
     }
 }

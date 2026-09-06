@@ -6,10 +6,10 @@
 #include <shellapi.h>
 #include <stdio.h>
 
-#define SETTINGS_WIDTH 300
-#define SETTINGS_HEIGHT 255
-#define HEADER_HEIGHT 36
-#define OPTION_ROW_HEIGHT 28
+#define BASE_SETTINGS_WIDTH 300
+#define BASE_SETTINGS_HEIGHT 255
+#define BASE_HEADER_HEIGHT 36
+#define BASE_OPTION_ROW_HEIGHT 28
 
 typedef enum {
     SET_HIT_NONE,
@@ -28,6 +28,7 @@ typedef enum {
 
 static HWND g_hSettingsWnd = NULL;
 static HWND g_hTrayWnd = NULL;
+static UINT g_currentDpi = 96;
 static HFONT g_hFontNormal = NULL;
 static HFONT g_hFontBold = NULL;
 static HFONT g_hFontSmall = NULL;
@@ -37,66 +38,86 @@ static bool g_trackingMouse = false;
 
 extern AppState g_appState;
 
+static void update_settings_fonts(UINT dpi) {
+    if (g_hFontNormal) DeleteObject(g_hFontNormal);
+    if (g_hFontBold)   DeleteObject(g_hFontBold);
+    if (g_hFontSmall)  DeleteObject(g_hFontSmall);
+
+    g_hFontNormal = ui_get_font_for_dpi(-12, false, dpi);
+    g_hFontBold   = ui_get_font_for_dpi(-12, true, dpi);
+    g_hFontSmall  = ui_get_font_for_dpi(-11, false, dpi);
+    g_currentDpi = dpi;
+}
+
 static SettingsHitType hit_test_settings(int x, int y) {
-    int width = SETTINGS_WIDTH;
+    UINT dpi = g_currentDpi;
+    RECT clientRc;
+    GetClientRect(g_hSettingsWnd, &clientRc);
+    int width = clientRc.right - clientRc.left;
+    if (width <= 0) width = ui_scale(BASE_SETTINGS_WIDTH, dpi);
+
+    int headerH = ui_scale(BASE_HEADER_HEIGHT, dpi);
+    int rowH = ui_scale(BASE_OPTION_ROW_HEIGHT, dpi);
 
     // Header github link
-    if (y >= 6 && y <= 30 && x >= width - 115 && x <= width - 10) {
+    if (y >= ui_scale(6, dpi) && y <= ui_scale(30, dpi) &&
+        x >= width - ui_scale(115, dpi) && x <= width - ui_scale(10, dpi)) {
         return SET_HIT_GITHUB;
     }
 
-    int curY = HEADER_HEIGHT + 4;
+    int curY = headerH + ui_scale(4, dpi);
     // Row 1: Notifications
-    if (y >= curY && y < curY + OPTION_ROW_HEIGHT) return SET_HIT_NOTIFICATIONS;
-    curY += OPTION_ROW_HEIGHT;
+    if (y >= curY && y < curY + rowH) return SET_HIT_NOTIFICATIONS;
+    curY += rowH;
 
     // Row 2: Startup
-    if (y >= curY && y < curY + OPTION_ROW_HEIGHT) return SET_HIT_STARTUP;
-    curY += OPTION_ROW_HEIGHT;
+    if (y >= curY && y < curY + rowH) return SET_HIT_STARTUP;
+    curY += rowH;
 
     // Row 3: Play media on Connect
-    if (y >= curY && y < curY + OPTION_ROW_HEIGHT) return SET_HIT_MEDIA_PLAY;
-    curY += OPTION_ROW_HEIGHT;
+    if (y >= curY && y < curY + rowH) return SET_HIT_MEDIA_PLAY;
+    curY += rowH;
 
     // Row 4: Pause media on Disconnect
-    if (y >= curY && y < curY + OPTION_ROW_HEIGHT) return SET_HIT_MEDIA_PAUSE;
-    curY += OPTION_ROW_HEIGHT;
+    if (y >= curY && y < curY + rowH) return SET_HIT_MEDIA_PAUSE;
+    curY += rowH;
 
     // Separator
-    curY += 8;
+    curY += ui_scale(8, dpi);
 
+    int radioRowH = ui_scale(26, dpi);
     // Connect via:
-    if (y >= curY && y < curY + 26) {
-        int cx = 90;
+    if (y >= curY && y < curY + radioRowH) {
+        int cx = ui_scale(90, dpi);
 #if ENABLE_KS
-        if (x >= cx && x <= cx + 52) return SET_HIT_CONNECT_KS;
-        cx += 56;
+        if (x >= cx && x <= cx + ui_scale(52, dpi)) return SET_HIT_CONNECT_KS;
+        cx += ui_scale(56, dpi);
 #endif
 #if ENABLE_API_HCI
-        if (x >= cx && x <= cx + 54) return SET_HIT_CONNECT_API;
-        cx += 58;
+        if (x >= cx && x <= cx + ui_scale(54, dpi)) return SET_HIT_CONNECT_API;
+        cx += ui_scale(58, dpi);
 #endif
 #if ENABLE_UI
-        if (x >= cx && x <= cx + 48) return SET_HIT_CONNECT_UI;
-        cx += 52;
+        if (x >= cx && x <= cx + ui_scale(48, dpi)) return SET_HIT_CONNECT_UI;
+        cx += ui_scale(52, dpi);
 #endif
     }
-    curY += 28;
+    curY += ui_scale(28, dpi);
 
     // Disconnect via:
-    if (y >= curY && y < curY + 26) {
-        int cx = 100;
+    if (y >= curY && y < curY + radioRowH) {
+        int cx = ui_scale(100, dpi);
 #if ENABLE_KS
-        if (x >= cx && x <= cx + 50) return SET_HIT_DISCONNECT_KS;
-        cx += 54;
+        if (x >= cx && x <= cx + ui_scale(50, dpi)) return SET_HIT_DISCONNECT_KS;
+        cx += ui_scale(54, dpi);
 #endif
 #if ENABLE_API_HCI
-        if (x >= cx && x <= cx + 52) return SET_HIT_DISCONNECT_HCI;
-        cx += 56;
+        if (x >= cx && x <= cx + ui_scale(52, dpi)) return SET_HIT_DISCONNECT_HCI;
+        cx += ui_scale(56, dpi);
 #endif
 #if ENABLE_UI
-        if (x >= cx && x <= cx + 46) return SET_HIT_DISCONNECT_UI;
-        cx += 50;
+        if (x >= cx && x <= cx + ui_scale(46, dpi)) return SET_HIT_DISCONNECT_UI;
+        cx += ui_scale(50, dpi);
 #endif
     }
 
@@ -127,16 +148,21 @@ static void on_paint_settings(HWND hwnd) {
 
     SetBkMode(memDC, TRANSPARENT);
 
+    UINT dpi = g_currentDpi;
+    int headerH = ui_scale(BASE_HEADER_HEIGHT, dpi);
+    int rowH = ui_scale(BASE_OPTION_ROW_HEIGHT, dpi);
+    int checkSize = ui_scale(14, dpi);
+
     // 1. Header: "Settings"
     SelectObject(memDC, g_hFontBold);
     SetTextColor(memDC, theme.fg);
-    RECT titleRc = { 12, 6, width - 120, HEADER_HEIGHT };
+    RECT titleRc = { ui_scale(12, dpi), ui_scale(6, dpi), width - ui_scale(120, dpi), headerH };
     DrawTextW(memDC, L"Settings", -1, &titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // GitHub version link
-    RECT gitRc = { width - 120, 6, width - 10, HEADER_HEIGHT };
+    RECT gitRc = { width - ui_scale(120, dpi), ui_scale(6, dpi), width - ui_scale(10, dpi), headerH };
     if (g_hoveredHit == SET_HIT_GITHUB) {
-        ui_draw_rounded_rect(memDC, &gitRc, 4, theme.rowHover, CLR_INVALID);
+        ui_draw_rounded_rect(memDC, &gitRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
     }
     SelectObject(memDC, g_hFontSmall);
     SetTextColor(memDC, theme.accent);
@@ -145,119 +171,121 @@ static void on_paint_settings(HWND hwnd) {
     // Separator
     HPEN sepPen = CreatePen(PS_SOLID, 1, theme.separator);
     HPEN oldPen = (HPEN)SelectObject(memDC, sepPen);
-    MoveToEx(memDC, 10, HEADER_HEIGHT + 1, NULL);
-    LineTo(memDC, width - 10, HEADER_HEIGHT + 1);
+    MoveToEx(memDC, ui_scale(10, dpi), headerH + 1, NULL);
+    LineTo(memDC, width - ui_scale(10, dpi), headerH + 1);
 
     // 2. Checkboxes
-    int curY = HEADER_HEIGHT + 4;
+    int curY = headerH + ui_scale(4, dpi);
     SelectObject(memDC, g_hFontNormal);
     SetTextColor(memDC, theme.fg);
 
     // Notifications
-    RECT row1Rc = { 6, curY, width - 6, curY + OPTION_ROW_HEIGHT };
-    if (g_hoveredHit == SET_HIT_NOTIFICATIONS) ui_draw_rounded_rect(memDC, &row1Rc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_checkbox(memDC, 14, curY + 6, 14, g_appState.enableNotifications, &theme);
-    RECT text1Rc = { 36, curY, width - 12, curY + OPTION_ROW_HEIGHT };
+    RECT row1Rc = { ui_scale(6, dpi), curY, width - ui_scale(6, dpi), curY + rowH };
+    if (g_hoveredHit == SET_HIT_NOTIFICATIONS) ui_draw_rounded_rect(memDC, &row1Rc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_checkbox(memDC, ui_scale(14, dpi), curY + ((rowH - checkSize) / 2), checkSize, g_appState.enableNotifications, &theme);
+    RECT text1Rc = { ui_scale(36, dpi), curY, width - ui_scale(12, dpi), curY + rowH };
     DrawTextW(memDC, L"Enable Notifications", -1, &text1Rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    curY += OPTION_ROW_HEIGHT;
+    curY += rowH;
 
     // Start with Windows
     bool runOnStartup = startup_is_enabled();
-    RECT row2Rc = { 6, curY, width - 6, curY + OPTION_ROW_HEIGHT };
-    if (g_hoveredHit == SET_HIT_STARTUP) ui_draw_rounded_rect(memDC, &row2Rc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_checkbox(memDC, 14, curY + 6, 14, runOnStartup, &theme);
-    RECT text2Rc = { 36, curY, width - 12, curY + OPTION_ROW_HEIGHT };
+    RECT row2Rc = { ui_scale(6, dpi), curY, width - ui_scale(6, dpi), curY + rowH };
+    if (g_hoveredHit == SET_HIT_STARTUP) ui_draw_rounded_rect(memDC, &row2Rc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_checkbox(memDC, ui_scale(14, dpi), curY + ((rowH - checkSize) / 2), checkSize, runOnStartup, &theme);
+    RECT text2Rc = { ui_scale(36, dpi), curY, width - ui_scale(12, dpi), curY + rowH };
     DrawTextW(memDC, L"Start with Windows", -1, &text2Rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    curY += OPTION_ROW_HEIGHT;
+    curY += rowH;
 
     // Play media on Connect
-    RECT row3Rc = { 6, curY, width - 6, curY + OPTION_ROW_HEIGHT };
-    if (g_hoveredHit == SET_HIT_MEDIA_PLAY) ui_draw_rounded_rect(memDC, &row3Rc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_checkbox(memDC, 14, curY + 6, 14, g_appState.sendMediaPlayOnConnect, &theme);
-    RECT text3Rc = { 36, curY, width - 12, curY + OPTION_ROW_HEIGHT };
+    RECT row3Rc = { ui_scale(6, dpi), curY, width - ui_scale(6, dpi), curY + rowH };
+    if (g_hoveredHit == SET_HIT_MEDIA_PLAY) ui_draw_rounded_rect(memDC, &row3Rc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_checkbox(memDC, ui_scale(14, dpi), curY + ((rowH - checkSize) / 2), checkSize, g_appState.sendMediaPlayOnConnect, &theme);
+    RECT text3Rc = { ui_scale(36, dpi), curY, width - ui_scale(12, dpi), curY + rowH };
     DrawTextW(memDC, L"Play media on Connect", -1, &text3Rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    curY += OPTION_ROW_HEIGHT;
+    curY += rowH;
 
     // Pause media on Disconnect
-    RECT row4Rc = { 6, curY, width - 6, curY + OPTION_ROW_HEIGHT };
-    if (g_hoveredHit == SET_HIT_MEDIA_PAUSE) ui_draw_rounded_rect(memDC, &row4Rc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_checkbox(memDC, 14, curY + 6, 14, g_appState.sendMediaPauseOnDisconnect, &theme);
-    RECT text4Rc = { 36, curY, width - 12, curY + OPTION_ROW_HEIGHT };
+    RECT row4Rc = { ui_scale(6, dpi), curY, width - ui_scale(6, dpi), curY + rowH };
+    if (g_hoveredHit == SET_HIT_MEDIA_PAUSE) ui_draw_rounded_rect(memDC, &row4Rc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_checkbox(memDC, ui_scale(14, dpi), curY + ((rowH - checkSize) / 2), checkSize, g_appState.sendMediaPauseOnDisconnect, &theme);
+    RECT text4Rc = { ui_scale(36, dpi), curY, width - ui_scale(12, dpi), curY + rowH };
     DrawTextW(memDC, L"Pause media on Disconnect", -1, &text4Rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    curY += OPTION_ROW_HEIGHT;
+    curY += rowH;
 
     // Separator
-    curY += 4;
-    MoveToEx(memDC, 10, curY, NULL);
-    LineTo(memDC, width - 10, curY);
+    curY += ui_scale(4, dpi);
+    MoveToEx(memDC, ui_scale(10, dpi), curY, NULL);
+    LineTo(memDC, width - ui_scale(10, dpi), curY);
     SelectObject(memDC, oldPen);
     DeleteObject(sepPen);
-    curY += 4;
+    curY += ui_scale(4, dpi);
+
+    int radioRowH = ui_scale(24, dpi);
 
     // 3. Connect via:
-    RECT connLabelRc = { 12, curY, 86, curY + 24 };
+    RECT connLabelRc = { ui_scale(12, dpi), curY, ui_scale(86, dpi), curY + radioRowH };
     DrawTextW(memDC, L"Connect via:", -1, &connLabelRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-    int cx = 90;
+    int cx = ui_scale(90, dpi);
 #if ENABLE_KS
-    RECT ksRc = { cx, curY, cx + 52, curY + 24 };
-    if (g_hoveredHit == SET_HIT_CONNECT_KS) ui_draw_rounded_rect(memDC, &ksRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, cx + 4, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_KS, &theme);
-    RECT ksTextRc = { cx + 23, curY, cx + 52, curY + 24 };
+    RECT ksRc = { cx, curY, cx + ui_scale(52, dpi), curY + radioRowH };
+    if (g_hoveredHit == SET_HIT_CONNECT_KS) ui_draw_rounded_rect(memDC, &ksRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_radio(memDC, cx + ui_scale(4, dpi), curY + ((radioRowH - checkSize) / 2), checkSize, g_appState.connectMethod == CONNECT_METHOD_KS, &theme);
+    RECT ksTextRc = { cx + ui_scale(23, dpi), curY, cx + ui_scale(52, dpi), curY + radioRowH };
     DrawTextW(memDC, L"KS", -1, &ksTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    cx += 56;
+    cx += ui_scale(56, dpi);
 #endif
 
 #if ENABLE_API_HCI
-    RECT apiRc = { cx, curY, cx + 54, curY + 24 };
-    if (g_hoveredHit == SET_HIT_CONNECT_API) ui_draw_rounded_rect(memDC, &apiRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, cx + 4, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_API, &theme);
-    RECT apiTextRc = { cx + 23, curY, cx + 54, curY + 24 };
+    RECT apiRc = { cx, curY, cx + ui_scale(54, dpi), curY + radioRowH };
+    if (g_hoveredHit == SET_HIT_CONNECT_API) ui_draw_rounded_rect(memDC, &apiRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_radio(memDC, cx + ui_scale(4, dpi), curY + ((radioRowH - checkSize) / 2), checkSize, g_appState.connectMethod == CONNECT_METHOD_API, &theme);
+    RECT apiTextRc = { cx + ui_scale(23, dpi), curY, cx + ui_scale(54, dpi), curY + radioRowH };
     DrawTextW(memDC, L"API", -1, &apiTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    cx += 58;
+    cx += ui_scale(58, dpi);
 #endif
 
 #if ENABLE_UI
-    RECT uiRc = { cx, curY, cx + 48, curY + 24 };
-    if (g_hoveredHit == SET_HIT_CONNECT_UI) ui_draw_rounded_rect(memDC, &uiRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, cx + 4, curY + 5, 14, g_appState.connectMethod == CONNECT_METHOD_UI, &theme);
-    RECT uiTextRc = { cx + 23, curY, cx + 48, curY + 24 };
+    RECT uiRc = { cx, curY, cx + ui_scale(48, dpi), curY + radioRowH };
+    if (g_hoveredHit == SET_HIT_CONNECT_UI) ui_draw_rounded_rect(memDC, &uiRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_radio(memDC, cx + ui_scale(4, dpi), curY + ((radioRowH - checkSize) / 2), checkSize, g_appState.connectMethod == CONNECT_METHOD_UI, &theme);
+    RECT uiTextRc = { cx + ui_scale(23, dpi), curY, cx + ui_scale(48, dpi), curY + radioRowH };
     DrawTextW(memDC, L"UI", -1, &uiTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    cx += 52;
+    cx += ui_scale(52, dpi);
 #endif
 
-    curY += 28;
+    curY += ui_scale(28, dpi);
 
     // 4. Disconnect via:
-    RECT disconnLabelRc = { 12, curY, 96, curY + 24 };
+    RECT disconnLabelRc = { ui_scale(12, dpi), curY, ui_scale(96, dpi), curY + radioRowH };
     DrawTextW(memDC, L"Disconnect via:", -1, &disconnLabelRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-    int dcx = 100;
+    int dcx = ui_scale(100, dpi);
 #if ENABLE_KS
-    RECT dksRc = { dcx, curY, dcx + 50, curY + 24 };
-    if (g_hoveredHit == SET_HIT_DISCONNECT_KS) ui_draw_rounded_rect(memDC, &dksRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, dcx + 4, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_KS, &theme);
-    RECT dksTextRc = { dcx + 23, curY, dcx + 50, curY + 24 };
+    RECT dksRc = { dcx, curY, dcx + ui_scale(50, dpi), curY + radioRowH };
+    if (g_hoveredHit == SET_HIT_DISCONNECT_KS) ui_draw_rounded_rect(memDC, &dksRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_radio(memDC, dcx + ui_scale(4, dpi), curY + ((radioRowH - checkSize) / 2), checkSize, g_appState.disconnectMethod == DISCONNECT_METHOD_KS, &theme);
+    RECT dksTextRc = { dcx + ui_scale(23, dpi), curY, dcx + ui_scale(50, dpi), curY + radioRowH };
     DrawTextW(memDC, L"KS", -1, &dksTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    dcx += 54;
+    dcx += ui_scale(54, dpi);
 #endif
 
 #if ENABLE_API_HCI
-    RECT hciRc = { dcx, curY, dcx + 52, curY + 24 };
-    if (g_hoveredHit == SET_HIT_DISCONNECT_HCI) ui_draw_rounded_rect(memDC, &hciRc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, dcx + 4, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_HCI, &theme);
-    RECT hciTextRc = { dcx + 23, curY, dcx + 52, curY + 24 };
+    RECT hciRc = { dcx, curY, dcx + ui_scale(52, dpi), curY + radioRowH };
+    if (g_hoveredHit == SET_HIT_DISCONNECT_HCI) ui_draw_rounded_rect(memDC, &hciRc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_radio(memDC, dcx + ui_scale(4, dpi), curY + ((radioRowH - checkSize) / 2), checkSize, g_appState.disconnectMethod == DISCONNECT_METHOD_HCI, &theme);
+    RECT hciTextRc = { dcx + ui_scale(23, dpi), curY, dcx + ui_scale(52, dpi), curY + radioRowH };
     DrawTextW(memDC, L"HCI", -1, &hciTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    dcx += 56;
+    dcx += ui_scale(56, dpi);
 #endif
 
 #if ENABLE_UI
-    RECT ui2Rc = { dcx, curY, dcx + 46, curY + 24 };
-    if (g_hoveredHit == SET_HIT_DISCONNECT_UI) ui_draw_rounded_rect(memDC, &ui2Rc, 4, theme.rowHover, CLR_INVALID);
-    ui_draw_radio(memDC, dcx + 4, curY + 5, 14, g_appState.disconnectMethod == DISCONNECT_METHOD_UI, &theme);
-    RECT ui2TextRc = { dcx + 23, curY, dcx + 46, curY + 24 };
+    RECT ui2Rc = { dcx, curY, dcx + ui_scale(46, dpi), curY + radioRowH };
+    if (g_hoveredHit == SET_HIT_DISCONNECT_UI) ui_draw_rounded_rect(memDC, &ui2Rc, ui_scale(4, dpi), theme.rowHover, CLR_INVALID);
+    ui_draw_radio(memDC, dcx + ui_scale(4, dpi), curY + ((radioRowH - checkSize) / 2), checkSize, g_appState.disconnectMethod == DISCONNECT_METHOD_UI, &theme);
+    RECT ui2TextRc = { dcx + ui_scale(23, dpi), curY, dcx + ui_scale(46, dpi), curY + radioRowH };
     DrawTextW(memDC, L"UI", -1, &ui2TextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    dcx += 50;
+    dcx += ui_scale(50, dpi);
 #endif
 
     // Outer border
@@ -265,7 +293,7 @@ static void on_paint_settings(HWND hwnd) {
     oldPen = (HPEN)SelectObject(memDC, outPen);
     HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
     HBRUSH oldB = (HBRUSH)SelectObject(memDC, nullBrush);
-    RoundRect(memDC, 0, 0, width, height, 8, 8);
+    RoundRect(memDC, 0, 0, width, height, ui_scale(8, dpi), ui_scale(8, dpi));
     SelectObject(memDC, oldB);
     SelectObject(memDC, oldPen);
     DeleteObject(outPen);
@@ -281,6 +309,18 @@ static void on_paint_settings(HWND hwnd) {
 
 static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_DPICHANGED: {
+            UINT newDpi = HIWORD(wParam);
+            update_settings_fonts(newDpi);
+            RECT* prc = (RECT*)lParam;
+            if (prc) {
+                SetWindowPos(hwnd, NULL, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            InvalidateRect(hwnd, NULL, TRUE);
+            return 0;
+        }
+
         case WM_PAINT:
             on_paint_settings(hwnd);
             return 0;
@@ -411,14 +451,12 @@ void ui_settings_init(HINSTANCE hInstance, HWND hTrayWnd) {
         wc.lpszClassName,
         L"uBTAudioTray Settings",
         WS_POPUP,
-        0, 0, SETTINGS_WIDTH, SETTINGS_HEIGHT,
+        0, 0, BASE_SETTINGS_WIDTH, BASE_SETTINGS_HEIGHT,
         NULL, NULL, hInstance, NULL);
 
     ui_enable_rounded_corners(g_hSettingsWnd);
 
-    g_hFontNormal = ui_get_font(-12, false);
-    g_hFontBold   = ui_get_font(-12, true);
-    g_hFontSmall  = ui_get_font(-11, false);
+    update_settings_fonts(ui_get_window_dpi(g_hSettingsWnd));
 }
 
 void ui_settings_cleanup(void) {
@@ -445,6 +483,15 @@ void ui_settings_show(void) {
     GetWindowRect(hMenu, &menuRc);
 
     POINT pt = { menuRc.left, menuRc.top };
+    UINT dpi = ui_get_point_dpi(pt);
+    if (dpi != g_currentDpi || !g_hFontNormal) {
+        update_settings_fonts(dpi);
+    }
+
+    int settingsW = ui_scale(BASE_SETTINGS_WIDTH, dpi);
+    int settingsH = ui_scale(BASE_SETTINGS_HEIGHT, dpi);
+    int pad6 = ui_scale(6, dpi);
+
     HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi = { 0 };
     mi.cbSize = sizeof(MONITORINFO);
@@ -452,25 +499,25 @@ void ui_settings_show(void) {
     RECT work = mi.rcWork;
 
     int left = menuRc.left;
-    int top = menuRc.top - SETTINGS_HEIGHT - 6;
+    int top = menuRc.top - settingsH - pad6;
 
     // If not enough room directly above Menu, try to the left of Menu
-    if (top < work.top + 6) {
-        if (menuRc.left - SETTINGS_WIDTH - 6 >= work.left + 6) {
-            left = menuRc.left - SETTINGS_WIDTH - 6;
-            top = menuRc.bottom - SETTINGS_HEIGHT;
+    if (top < work.top + pad6) {
+        if (menuRc.left - settingsW - pad6 >= work.left + pad6) {
+            left = menuRc.left - settingsW - pad6;
+            top = menuRc.bottom - settingsH;
         } else {
-            top = work.top + 6;
+            top = work.top + pad6;
         }
     }
 
     // Clamp within work area bounds
-    if (left < work.left + 6) left = work.left + 6;
-    if (left + SETTINGS_WIDTH > work.right - 6) left = work.right - SETTINGS_WIDTH - 6;
-    if (top < work.top + 6) top = work.top + 6;
-    if (top + SETTINGS_HEIGHT > work.bottom - 6) top = work.bottom - SETTINGS_HEIGHT - 6;
+    if (left < work.left + pad6) left = work.left + pad6;
+    if (left + settingsW > work.right - pad6) left = work.right - settingsW - pad6;
+    if (top < work.top + pad6) top = work.top + pad6;
+    if (top + settingsH > work.bottom - pad6) top = work.bottom - settingsH - pad6;
 
-    SetWindowPos(g_hSettingsWnd, HWND_TOPMOST, left, top, SETTINGS_WIDTH, SETTINGS_HEIGHT, SWP_SHOWWINDOW);
+    SetWindowPos(g_hSettingsWnd, HWND_TOPMOST, left, top, settingsW, settingsH, SWP_SHOWWINDOW);
     SetForegroundWindow(g_hSettingsWnd);
     InvalidateRect(g_hSettingsWnd, NULL, TRUE);
 }
@@ -484,4 +531,5 @@ void ui_settings_hide(void) {
 bool ui_settings_is_visible(void) {
     return g_hSettingsWnd ? IsWindowVisible(g_hSettingsWnd) : false;
 }
+
 

@@ -21,10 +21,97 @@ TaskbarEdge ui_get_taskbar_edge(POINT pt, RECT* outWorkArea) {
     return TASKBAR_EDGE_BOTTOM;
 }
 
+UINT ui_get_window_dpi(HWND hwnd) {
+    typedef UINT (WINAPI *FnGetDpiForWindow)(HWND);
+    static FnGetDpiForWindow pfnGetDpiForWindow = NULL;
+    static bool resolved = false;
+
+    if (!resolved) {
+        HMODULE hUser = GetModuleHandleW(L"user32.dll");
+        if (hUser) {
+            pfnGetDpiForWindow = (FnGetDpiForWindow)GetProcAddress(hUser, "GetDpiForWindow");
+        }
+        resolved = true;
+    }
+
+    if (pfnGetDpiForWindow && hwnd && IsWindow(hwnd)) {
+        UINT dpi = pfnGetDpiForWindow(hwnd);
+        if (dpi > 0) return dpi;
+    }
+
+    HDC hdc = GetDC(hwnd);
+    if (hdc) {
+        int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+        ReleaseDC(hwnd, hdc);
+        if (dpi > 0) return (UINT)dpi;
+    }
+
+    return 96;
+}
+
+UINT ui_get_point_dpi(POINT pt) {
+    typedef HRESULT (WINAPI *FnGetDpiForMonitor)(HMONITOR, int, UINT*, UINT*);
+    static FnGetDpiForMonitor pfnGetDpiForMonitor = NULL;
+    static bool resolved = false;
+
+    if (!resolved) {
+        HMODULE hShcore = LoadLibraryW(L"shcore.dll");
+        if (hShcore) {
+            pfnGetDpiForMonitor = (FnGetDpiForMonitor)GetProcAddress(hShcore, "GetDpiForMonitor");
+        }
+        resolved = true;
+    }
+
+    HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+    if (pfnGetDpiForMonitor && hMon) {
+        UINT dpiX = 96, dpiY = 96;
+        if (SUCCEEDED(pfnGetDpiForMonitor(hMon, 0 /* MDT_EFFECTIVE_DPI */, &dpiX, &dpiY)) && dpiX > 0) {
+            return dpiX;
+        }
+    }
+
+    HDC hdc = GetDC(NULL);
+    if (hdc) {
+        int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+        ReleaseDC(NULL, hdc);
+        if (dpi > 0) return (UINT)dpi;
+    }
+
+    return 96;
+}
+
+int ui_scale(int value, UINT dpi) {
+    if (dpi == 0 || dpi == 96) return value;
+    return MulDiv(value, (int)dpi, 96);
+}
+
+int ui_get_system_metric_for_dpi(int metric, UINT dpi) {
+    typedef int (WINAPI *FnGetSystemMetricsForDpi)(int, UINT);
+    static FnGetSystemMetricsForDpi pfnGetSystemMetricsForDpi = NULL;
+    static bool resolved = false;
+
+    if (!resolved) {
+        HMODULE hUser = GetModuleHandleW(L"user32.dll");
+        if (hUser) {
+            pfnGetSystemMetricsForDpi = (FnGetSystemMetricsForDpi)GetProcAddress(hUser, "GetSystemMetricsForDpi");
+        }
+        resolved = true;
+    }
+
+    if (pfnGetSystemMetricsForDpi && dpi > 0) {
+        return pfnGetSystemMetricsForDpi(metric, dpi);
+    }
+
+    return ui_scale(GetSystemMetrics(metric), dpi);
+}
+
 void ui_position_window(HWND hwnd, int anchorX, int anchorY, int width, int height) {
     POINT pt = { anchorX, anchorY };
     RECT workArea = { 0 };
     TaskbarEdge edge = ui_get_taskbar_edge(pt, &workArea);
+    UINT dpi = ui_get_point_dpi(pt);
+    int margin = ui_scale(8, dpi);
+    int clampPad = ui_scale(6, dpi);
 
     int left = 0;
     int top = 0;
@@ -32,29 +119,29 @@ void ui_position_window(HWND hwnd, int anchorX, int anchorY, int width, int heig
     switch (edge) {
         case TASKBAR_EDGE_TOP:
             left = anchorX - (width / 2);
-            top = anchorY + 8;
+            top = anchorY + margin;
             break;
         case TASKBAR_EDGE_LEFT:
-            left = anchorX + 8;
+            left = anchorX + margin;
             top = anchorY - (height / 2);
             break;
         case TASKBAR_EDGE_RIGHT:
-            left = anchorX - width - 8;
+            left = anchorX - width - margin;
             top = anchorY - (height / 2);
             break;
         case TASKBAR_EDGE_BOTTOM:
         case TASKBAR_EDGE_UNKNOWN:
         default:
             left = anchorX - (width / 2);
-            top = anchorY - height - 8;
+            top = anchorY - height - margin;
             break;
     }
 
     // Clamp to monitor work area
-    if (left < workArea.left + 6) left = workArea.left + 6;
-    if (left + width > workArea.right - 6) left = workArea.right - width - 6;
-    if (top < workArea.top + 6) top = workArea.top + 6;
-    if (top + height > workArea.bottom - 6) top = workArea.bottom - height - 6;
+    if (left < workArea.left + clampPad) left = workArea.left + clampPad;
+    if (left + width > workArea.right - clampPad) left = workArea.right - width - clampPad;
+    if (top < workArea.top + clampPad) top = workArea.top + clampPad;
+    if (top + height > workArea.bottom - clampPad) top = workArea.bottom - height - clampPad;
 
     SetWindowPos(hwnd, HWND_TOPMOST, left, top, width, height, SWP_NOACTIVATE);
 }
@@ -64,9 +151,13 @@ void ui_enable_rounded_corners(HWND hwnd) {
     DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
 }
 
-HFONT ui_get_font(int height, bool bold) {
+HFONT ui_get_font_for_dpi(int baseHeight, bool bold, UINT dpi) {
+    int scaledHeight = (baseHeight < 0)
+        ? -ui_scale(-baseHeight, dpi)
+        : ui_scale(baseHeight, dpi);
+
     return CreateFontW(
-        height, 0, 0, 0,
+        scaledHeight, 0, 0, 0,
         bold ? FW_SEMIBOLD : FW_NORMAL,
         FALSE, FALSE, FALSE,
         DEFAULT_CHARSET,
@@ -75,6 +166,10 @@ HFONT ui_get_font(int height, bool bold) {
         CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_DONTCARE,
         L"Segoe UI");
+}
+
+HFONT ui_get_font(int height, bool bold) {
+    return ui_get_font_for_dpi(height, bold, 96);
 }
 
 void ui_draw_rounded_rect(HDC hdc, const RECT* rc, int radius, COLORREF fillCol, COLORREF borderCol) {
@@ -94,20 +189,22 @@ void ui_draw_rounded_rect(HDC hdc, const RECT* rc, int radius, COLORREF fillCol,
 }
 
 void ui_draw_checkbox(HDC hdc, int x, int y, int size, bool isChecked, const ThemeColors* theme) {
+    int radius = (size >= 20) ? 4 : 3;
     RECT rc = { x, y, x + size, y + size };
-    ui_draw_rounded_rect(hdc, &rc, 3, theme->checkBg, theme->checkBorder);
+    ui_draw_rounded_rect(hdc, &rc, radius, theme->checkBg, theme->checkBorder);
 
     if (isChecked) {
-        HPEN hPen = CreatePen(PS_SOLID, 2, theme->checkMark);
+        int penW = (size >= 24) ? 3 : (size >= 18 ? 2 : 2);
+        HPEN hPen = CreatePen(PS_SOLID, penW, theme->checkMark);
         HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
 
-        // Checkmark geometry
-        int leftX = x + 3;
+        // Checkmark geometry scaled to size
+        int leftX = x + MulDiv(size, 3, 14);
         int leftY = y + (size / 2);
-        int midX  = x + (size * 2 / 5);
-        int midY  = y + size - 4;
-        int rightX = x + size - 3;
-        int rightY = y + 3;
+        int midX  = x + MulDiv(size, 5, 14);
+        int midY  = y + size - MulDiv(size, 4, 14);
+        int rightX = x + size - MulDiv(size, 3, 14);
+        int rightY = y + MulDiv(size, 3, 14);
 
         MoveToEx(hdc, leftX, leftY, NULL);
         LineTo(hdc, midX, midY);
@@ -120,7 +217,8 @@ void ui_draw_checkbox(HDC hdc, int x, int y, int size, bool isChecked, const The
 
 void ui_draw_radio(HDC hdc, int x, int y, int size, bool isChecked, const ThemeColors* theme) {
     HBRUSH hBrush = CreateSolidBrush(theme->checkBg);
-    HPEN hPen = CreatePen(PS_SOLID, 1, theme->checkBorder);
+    int penW = (size >= 24) ? 2 : 1;
+    HPEN hPen = CreatePen(PS_SOLID, penW, theme->checkBorder);
 
     HBRUSH hOldBrush = (HBRUSH)SelectObject(hdc, hBrush);
     HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
@@ -134,6 +232,7 @@ void ui_draw_radio(HDC hdc, int x, int y, int size, bool isChecked, const ThemeC
 
     if (isChecked) {
         int pad = size / 4;
+        if (pad < 2) pad = 2;
         HBRUSH hDotBrush = CreateSolidBrush(theme->checkMark);
         HPEN hNullPen = (HPEN)GetStockObject(NULL_PEN);
 
@@ -155,7 +254,8 @@ void ui_draw_status_indicator(HDC hdc, int x, int y, int size, bool isConnected,
         : (theme->isDark ? RGB(90, 90, 90) : RGB(180, 180, 180));
 
     HBRUSH hBrush = CreateSolidBrush(col);
-    HPEN hPen = CreatePen(PS_SOLID, 1, borderCol);
+    int penW = (size >= 24) ? 2 : 1;
+    HPEN hPen = CreatePen(PS_SOLID, penW, borderCol);
 
     HBRUSH hOldBrush = (HBRUSH)SelectObject(hdc, hBrush);
     HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
@@ -167,4 +267,5 @@ void ui_draw_status_indicator(HDC hdc, int x, int y, int size, bool isConnected,
     DeleteObject(hBrush);
     DeleteObject(hPen);
 }
+
 
