@@ -270,7 +270,7 @@ static void on_paint(HWND hwnd) {
             SelectObject(memDC, g_hFontNormal);
             SetTextColor(memDC, theme.fg);
             RECT nameRc = { ui_scale(34, dpi), rowTop, width - ui_scale(120, dpi), rowTop + rowH };
-            DrawTextW(memDC, dev->displayName, -1, &nameRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            DrawTextW(memDC, dev->displayName, -1, &nameRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
             // Connection Status indicator (dot)
             bool showConnected = dev->isConnected;
@@ -319,7 +319,7 @@ static void on_paint(HWND hwnd) {
     SelectObject(memDC, g_hFontNormal);
     SetTextColor(memDC, theme.fg);
     RECT footerTextRc = { ui_scale(12, dpi), curY, width - ui_scale(12, dpi), curY + footerH };
-    DrawTextW(memDC, L"Open Bluetooth & Devices Settings", -1, &footerTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(memDC, L"Open Bluetooth & Devices Settings", -1, &footerTextRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
     // Outer subtle border
     HPEN outPen = CreatePen(PS_SOLID, 1, theme.separator);
