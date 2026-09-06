@@ -1,3 +1,5 @@
+#include "config.h"
+#if ENABLE_UI
 #define COBJMACROS
 #include "uia_connect.h"
 #include <uiautomationclient.h>
@@ -328,4 +330,5 @@ bool uia_connect_device(const wchar_t* deviceName, const wchar_t* deviceAddress,
 bool uia_disconnect_device(const wchar_t* deviceName, const wchar_t* deviceAddress, DeviceToggleResult* result) {
     return uia_invoke_device_action(deviceName, deviceAddress, L"Disconnect", result);
 }
+#endif // ENABLE_UI
 

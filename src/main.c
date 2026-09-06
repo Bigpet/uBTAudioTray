@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "config.h"
 #include "resource.h"
 #include "app_state.h"
 #include "startup.h"
@@ -275,21 +276,47 @@ static DWORD WINAPI queue_worker_thread(LPVOID lpParam) {
                 if (tr) {
                     memset(tr, 0, sizeof(DeviceToggleResult));
                     if (item.isConnect) {
+#if ENABLE_KS
                         if (g_appState.connectMethod == CONNECT_METHOD_KS) {
                             bt_connect_device_ks(item.address, item.name, tr);
-                        } else if (g_appState.connectMethod == CONNECT_METHOD_UI) {
+                        } else
+#endif
+#if ENABLE_UI
+                        if (g_appState.connectMethod == CONNECT_METHOD_UI) {
                             uia_connect_device(item.name, item.address, tr);
-                        } else {
+                        } else
+#endif
+#if ENABLE_API_HCI
+                        {
                             bt_connect_device_api(item.address, item.name, tr);
                         }
+#else
+                        {
+                            tr->outcome = TOGGLE_FAILED;
+                            wcscpy_s(tr->message, 256, L"Selected connection method not supported in this build.");
+                        }
+#endif
                     } else {
+#if ENABLE_KS
                         if (g_appState.disconnectMethod == DISCONNECT_METHOD_KS) {
                             bt_disconnect_device_ks(item.address, item.name, tr);
-                        } else if (g_appState.disconnectMethod == DISCONNECT_METHOD_UI) {
+                        } else
+#endif
+#if ENABLE_UI
+                        if (g_appState.disconnectMethod == DISCONNECT_METHOD_UI) {
                             uia_disconnect_device(item.name, item.address, tr);
-                        } else {
+                        } else
+#endif
+#if ENABLE_API_HCI
+                        {
                             bt_disconnect_device_hci(item.address, item.name, tr);
                         }
+#else
+                        {
+                            tr->outcome = TOGGLE_FAILED;
+                            wcscpy_s(tr->message, 256, L"Selected disconnection method not supported in this build.");
+                        }
+#endif
                     }
                     PostMessageW(g_hHiddenWnd, WM_APP_ACTION_DONE, 0, (LPARAM)tr);
                 }
@@ -499,12 +526,14 @@ static LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
                 ui_menu_set_device_busy(info->address, info->isConnect ? DEVICE_BUSY_CONNECTING : DEVICE_BUSY_DISCONNECTING);
 
                 wchar_t notifyTitle[64];
-                const wchar_t* connMethodStr = L"KS";
-                if (g_appState.connectMethod == CONNECT_METHOD_API) connMethodStr = L"API";
+                const wchar_t* connMethodStr = L"";
+                if (g_appState.connectMethod == CONNECT_METHOD_KS) connMethodStr = L"KS";
+                else if (g_appState.connectMethod == CONNECT_METHOD_API) connMethodStr = L"API";
                 else if (g_appState.connectMethod == CONNECT_METHOD_UI) connMethodStr = L"UI";
 
-                const wchar_t* disconnMethodStr = L"KS";
-                if (g_appState.disconnectMethod == DISCONNECT_METHOD_HCI) disconnMethodStr = L"HCI";
+                const wchar_t* disconnMethodStr = L"";
+                if (g_appState.disconnectMethod == DISCONNECT_METHOD_KS) disconnMethodStr = L"KS";
+                else if (g_appState.disconnectMethod == DISCONNECT_METHOD_HCI) disconnMethodStr = L"HCI";
                 else if (g_appState.disconnectMethod == DISCONNECT_METHOD_UI) disconnMethodStr = L"UI";
 
                 swprintf_s(notifyTitle, 64, L"%s (%s)", info->isConnect ? L"Connecting" : L"Disconnecting",

@@ -37,12 +37,19 @@ void bt_cleanup(void);
 // Enumerate all paired/connected audio devices
 int bt_discover_audio_devices(BluetoothAudioDevice* outDevices, int maxDevices);
 
+#include "config.h"
+
 // Connection operations
+#if ENABLE_API_HCI
 bool bt_connect_device_api(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
-bool bt_connect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
 bool bt_disconnect_device_api(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
 bool bt_disconnect_device_hci(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
+#endif
+
+#if ENABLE_KS
+bool bt_connect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
 bool bt_disconnect_device_ks(const wchar_t* address, const wchar_t* name, DeviceToggleResult* result);
+#endif
 
 // Connection check
 bool bt_get_connection_state(const wchar_t* address, bool* isConnected);

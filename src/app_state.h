@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <stdbool.h>
+#include "config.h"
 
 #define MAX_SELECTED_DEVICES 32
 #define MAC_ADDR_LEN 24

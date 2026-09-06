@@ -36,8 +36,16 @@ void app_state_init_default(AppState* state) {
     state->enableNotifications = false;
     state->sendMediaPlayOnConnect = false;
     state->sendMediaPauseOnDisconnect = false;
+#if ENABLE_KS
     state->connectMethod = CONNECT_METHOD_KS;
     state->disconnectMethod = DISCONNECT_METHOD_KS;
+#elif ENABLE_API_HCI
+    state->connectMethod = CONNECT_METHOD_API;
+    state->disconnectMethod = DISCONNECT_METHOD_HCI;
+#elif ENABLE_UI
+    state->connectMethod = CONNECT_METHOD_UI;
+    state->disconnectMethod = DISCONNECT_METHOD_UI;
+#endif
     state->selectedCount = 0;
 }
 
@@ -172,6 +180,58 @@ bool app_state_load(AppState* state) {
         else if (parse_json_bool(buffer, "UseHciDisconnect", false)) state->disconnectMethod = DISCONNECT_METHOD_HCI;
         else state->disconnectMethod = DISCONNECT_METHOD_KS;
     }
+
+    // Ensure selected methods are enabled in this build
+#if !ENABLE_KS
+    if (state->connectMethod == CONNECT_METHOD_KS) {
+#if ENABLE_API_HCI
+        state->connectMethod = CONNECT_METHOD_API;
+#elif ENABLE_UI
+        state->connectMethod = CONNECT_METHOD_UI;
+#endif
+    }
+    if (state->disconnectMethod == DISCONNECT_METHOD_KS) {
+#if ENABLE_API_HCI
+        state->disconnectMethod = DISCONNECT_METHOD_HCI;
+#elif ENABLE_UI
+        state->disconnectMethod = DISCONNECT_METHOD_UI;
+#endif
+    }
+#endif
+
+#if !ENABLE_API_HCI
+    if (state->connectMethod == CONNECT_METHOD_API) {
+#if ENABLE_KS
+        state->connectMethod = CONNECT_METHOD_KS;
+#elif ENABLE_UI
+        state->connectMethod = CONNECT_METHOD_UI;
+#endif
+    }
+    if (state->disconnectMethod == DISCONNECT_METHOD_HCI) {
+#if ENABLE_KS
+        state->disconnectMethod = DISCONNECT_METHOD_KS;
+#elif ENABLE_UI
+        state->disconnectMethod = DISCONNECT_METHOD_UI;
+#endif
+    }
+#endif
+
+#if !ENABLE_UI
+    if (state->connectMethod == CONNECT_METHOD_UI) {
+#if ENABLE_KS
+        state->connectMethod = CONNECT_METHOD_KS;
+#elif ENABLE_API_HCI
+        state->connectMethod = CONNECT_METHOD_API;
+#endif
+    }
+    if (state->disconnectMethod == DISCONNECT_METHOD_UI) {
+#if ENABLE_KS
+        state->disconnectMethod = DISCONNECT_METHOD_KS;
+#elif ENABLE_API_HCI
+        state->disconnectMethod = DISCONNECT_METHOD_HCI;
+#endif
+    }
+#endif
 
     free(buffer);
     return true;
