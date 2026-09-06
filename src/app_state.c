@@ -162,9 +162,6 @@ bool app_state_load(AppState* state) {
         } else {
             state->connectMethod = CONNECT_METHOD_KS;
         }
-    } else {
-        bool legacyUia = parse_json_bool(buffer, "UseUiaConnect", false);
-        state->connectMethod = legacyUia ? CONNECT_METHOD_UI : CONNECT_METHOD_KS;
     }
 
     char disconnMethodStr[32] = { 0 };
@@ -176,10 +173,6 @@ bool app_state_load(AppState* state) {
         } else {
             state->disconnectMethod = DISCONNECT_METHOD_KS;
         }
-    } else {
-        if (parse_json_bool(buffer, "UseUiaDisconnect", false)) state->disconnectMethod = DISCONNECT_METHOD_UI;
-        else if (parse_json_bool(buffer, "UseHciDisconnect", false)) state->disconnectMethod = DISCONNECT_METHOD_HCI;
-        else state->disconnectMethod = DISCONNECT_METHOD_KS;
     }
 
     // Ensure selected methods are enabled in this build
