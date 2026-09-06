@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include <windows.h>
 #include <bthsdpdef.h>
 #include <bluetoothapis.h>

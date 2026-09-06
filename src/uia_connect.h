@@ -1,9 +1,8 @@
 #pragma once
 
-#include <windows.h>
 #include <stdbool.h>
-#include "bluetooth.h"
 #include "config.h"
+#include "bluetooth.h"
 
 #if ENABLE_UI
 // Connect / Disconnect via Windows Settings UI Automation

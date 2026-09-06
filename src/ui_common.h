@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include <windows.h>
 #include <dwmapi.h>
 #include <stdbool.h>

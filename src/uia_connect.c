@@ -1,8 +1,10 @@
 #include "config.h"
 #if ENABLE_UI
 #define COBJMACROS
-#include "uia_connect.h"
+#include <windows.h>
+#include <ole2.h>
 #include <uiautomationclient.h>
+#include "uia_connect.h"
 #include <shellapi.h>
 #include <stdio.h>
 #include <stdbool.h>

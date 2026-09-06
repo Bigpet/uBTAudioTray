@@ -1,7 +1,7 @@
 #pragma once
 
-#include <windows.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include "config.h"
 
 #define MAX_SELECTED_DEVICES 32

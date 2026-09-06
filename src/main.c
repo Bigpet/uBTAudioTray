@@ -1,11 +1,12 @@
+#include "config.h"
 #include <windows.h>
+#include <objbase.h>
 #include <commctrl.h>
 #include <shellapi.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "config.h"
 #include "resource.h"
 #include "app_state.h"
 #include "startup.h"
