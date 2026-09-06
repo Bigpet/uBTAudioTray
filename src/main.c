@@ -644,7 +644,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     g_nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
     g_nid.uCallbackMessage = WM_APP_TRAYMSG;
     g_nid.hIcon = get_current_idle_icon();
-    wcscpy_s(g_nid.szTip, sizeof(g_nid.szTip) / sizeof(wchar_t), L"uBTAudioTray");
+    wcscpy_s(g_nid.szTip, sizeof(g_nid.szTip) / sizeof(wchar_t), L"uBTAudioTray\nSingle click toggles connection of selected devices");
     Shell_NotifyIconW(NIM_ADD, &g_nid);
 
     // Initial background scan

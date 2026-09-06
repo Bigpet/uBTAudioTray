@@ -1,24 +1,26 @@
 # uBTAudioTray <img src="res/bt_icon_on.png" alt="uBTAudioTray Icon" width="40"/>
 
-Mostly LLM generated C rewrite of QuickBTTray.
+A lightweight Windows tray application for quick management of Bluetooth audio devices. Especially for one-click connect/disconnect.
 
-A lightweight Windows tray application for quick management of Bluetooth audio devices.
+Mostly LLM generated C rewrite of Joel-Hjertens' [QuickBTTray](https://github.com/Joel-Hjerten/QuickBTTray). This README also derives from their version.
 
 <img src="res/Screenshot_uBTAudioTray.png" alt="uBTAudioTray Icon"/>
 
-I created this app because AirPods don’t support automatic switching between an iPhone and a PC. While they stay paired to both, manually connecting through Windows 11 Bluetooth menus several times a day quickly becomes tedious (which I do at work). This app minimizes that friction: a simple left-click on the tray icon instantly toggles the connection of the devices you’ve selected in the app's menu. This app should hopefully work for anyone who has a Bluetooth headset without multipoint support.
+For quick connecting/disconnecting of Bluetooth audio devices.
+Useful when you have Bluetooth device without working Multipoint connection switching. As well in case of a Windows application that doesn't release the audio stream correctly. Then it can be pain to go through the same Menu multiple times a day to disconnect/reconnect the Bluetooth Audio device.
+This app minimizes that friction: a simple left-click on the tray icon instantly toggles the connection of the devices you’ve selected in the app's menu. This app should hopefully work for anyone who has a Bluetooth headset without multipoint support.
 
 ## Features
-- Lives in the system tray with a modern, theme-aware menu
 - One-click on the tray icon to connect/disconnect for selected Bluetooth audio devices
+- Lives in the system tray
+- Dark/light mode support
 - Manual connect/disconnect buttons for each device
 - Visual status icons for device connection state
 - Tray icon animates during connect/disconnect
-- Supports both API and UI (Windows Settings) connection methods
+- Supports KS, API and UI (Windows Settings) connection methods
 - "Start with Windows" option (adds/removes registry entry)
 - Settings menu for connection method and app options
 - "Open Bluetooth & Devices Settings" shortcut
-- Dark/light mode support
 
 ## How It Works
 - The app scans for Bluetooth audio devices and lists them in the tray menu.
@@ -40,7 +42,7 @@ I created this app because AirPods don’t support automatic switching between a
 
 
 ## Building
-You need the Win10 or Win11 SDK installed.
+You need the Win10 or Win11 SDK Headers installed.
 - To build a portable, standalone EXE:
 	```
 	build.bat
@@ -50,6 +52,18 @@ You need the Win10 or Win11 SDK installed.
 - The app does not collect or transmit any user data.
 - If you move the EXE, re-enable "Start with Windows" to update the registry path.
 - For best results with UI automation, avoid interacting with the PC until the connection completes.
+
+## Alternatives
+
+If this is almost what you want but not quite, you can look into:
+
+Similar Software includes: 
+* QuickBTTray (software this was forked from)
+* BTAudioSysTrayTool 
+* ToothTray (pioneered the KS API approach afaik)
+* ToothTrayCli
+* bqc (BT Quick Connect)
+* MagicPods (more aipods/Sony/Samsung features)
 
 ## License
 MIT License
