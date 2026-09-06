@@ -33,14 +33,11 @@ static void ensure_dir_exists(const wchar_t* filePath) {
 void app_state_init_default(AppState* state) {
     if (!state) return;
     memset(state, 0, sizeof(AppState));
-    state->enableNotifications = true;
+    state->enableNotifications = false;
     state->sendMediaPlayOnConnect = false;
     state->sendMediaPauseOnDisconnect = false;
     state->connectMethod = CONNECT_METHOD_KS;
     state->disconnectMethod = DISCONNECT_METHOD_KS;
-    state->useUiaConnect = false;
-    state->useUiaDisconnect = false;
-    state->useHciDisconnect = false;
     state->selectedCount = 0;
 }
 
@@ -143,12 +140,9 @@ bool app_state_load(AppState* state) {
     CloseHandle(hFile);
 
     parse_json_string_array(buffer, "SelectedDeviceAddresses", state->selectedAddresses, &state->selectedCount);
-    state->enableNotifications = parse_json_bool(buffer, "EnableNotifications", true);
+    state->enableNotifications = parse_json_bool(buffer, "EnableNotifications", false);
     state->sendMediaPlayOnConnect = parse_json_bool(buffer, "SendMediaPlayOnConnect", false);
     state->sendMediaPauseOnDisconnect = parse_json_bool(buffer, "SendMediaPauseOnDisconnect", false);
-    state->useUiaConnect = parse_json_bool(buffer, "UseUiaConnect", false);
-    state->useUiaDisconnect = parse_json_bool(buffer, "UseUiaDisconnect", false);
-    state->useHciDisconnect = parse_json_bool(buffer, "UseHciDisconnect", true);
 
     char methodStr[32] = { 0 };
     if (parse_json_string(buffer, "ConnectMethod", methodStr, sizeof(methodStr))) {
@@ -160,9 +154,9 @@ bool app_state_load(AppState* state) {
             state->connectMethod = CONNECT_METHOD_KS;
         }
     } else {
-        state->connectMethod = state->useUiaConnect ? CONNECT_METHOD_UI : CONNECT_METHOD_KS;
+        bool legacyUia = parse_json_bool(buffer, "UseUiaConnect", false);
+        state->connectMethod = legacyUia ? CONNECT_METHOD_UI : CONNECT_METHOD_KS;
     }
-    state->useUiaConnect = (state->connectMethod == CONNECT_METHOD_UI);
 
     char disconnMethodStr[32] = { 0 };
     if (parse_json_string(buffer, "DisconnectMethod", disconnMethodStr, sizeof(disconnMethodStr))) {
@@ -174,12 +168,10 @@ bool app_state_load(AppState* state) {
             state->disconnectMethod = DISCONNECT_METHOD_KS;
         }
     } else {
-        if (state->useUiaDisconnect) state->disconnectMethod = DISCONNECT_METHOD_UI;
-        else if (state->useHciDisconnect) state->disconnectMethod = DISCONNECT_METHOD_HCI;
+        if (parse_json_bool(buffer, "UseUiaDisconnect", false)) state->disconnectMethod = DISCONNECT_METHOD_UI;
+        else if (parse_json_bool(buffer, "UseHciDisconnect", false)) state->disconnectMethod = DISCONNECT_METHOD_HCI;
         else state->disconnectMethod = DISCONNECT_METHOD_KS;
     }
-    state->useUiaDisconnect = (state->disconnectMethod == DISCONNECT_METHOD_UI);
-    state->useHciDisconnect = (state->disconnectMethod == DISCONNECT_METHOD_HCI);
 
     free(buffer);
     return true;
@@ -224,19 +216,13 @@ bool app_state_save(const AppState* state) {
         "  \"SendMediaPlayOnConnect\": %s,\n"
         "  \"SendMediaPauseOnDisconnect\": %s,\n"
         "  \"ConnectMethod\": \"%s\",\n"
-        "  \"DisconnectMethod\": \"%s\",\n"
-        "  \"UseUiaConnect\": %s,\n"
-        "  \"UseUiaDisconnect\": %s,\n"
-        "  \"UseHciDisconnect\": %s\n"
+        "  \"DisconnectMethod\": \"%s\"\n"
         "}\n",
         state->enableNotifications ? "true" : "false",
         state->sendMediaPlayOnConnect ? "true" : "false",
         state->sendMediaPauseOnDisconnect ? "true" : "false",
         connMethodStr,
-        disconnMethodStr,
-        (state->connectMethod == CONNECT_METHOD_UI) ? "true" : "false",
-        (state->disconnectMethod == DISCONNECT_METHOD_UI) ? "true" : "false",
-        (state->disconnectMethod == DISCONNECT_METHOD_HCI) ? "true" : "false");
+        disconnMethodStr);
 
     DWORD bytesWritten = 0;
     WriteFile(hFile, buffer, (DWORD)offset, &bytesWritten, NULL);

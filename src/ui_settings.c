@@ -299,35 +299,26 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_CONNECT_KS) {
                 g_appState.connectMethod = CONNECT_METHOD_KS;
-                g_appState.useUiaConnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_CONNECT_API) {
                 g_appState.connectMethod = CONNECT_METHOD_API;
-                g_appState.useUiaConnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_CONNECT_UI) {
                 g_appState.connectMethod = CONNECT_METHOD_UI;
-                g_appState.useUiaConnect = true;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_DISCONNECT_KS) {
                 g_appState.disconnectMethod = DISCONNECT_METHOD_KS;
-                g_appState.useHciDisconnect = false;
-                g_appState.useUiaDisconnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_DISCONNECT_HCI) {
                 g_appState.disconnectMethod = DISCONNECT_METHOD_HCI;
-                g_appState.useHciDisconnect = true;
-                g_appState.useUiaDisconnect = false;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
             } else if (hit == SET_HIT_DISCONNECT_UI) {
                 g_appState.disconnectMethod = DISCONNECT_METHOD_UI;
-                g_appState.useHciDisconnect = false;
-                g_appState.useUiaDisconnect = true;
                 app_state_save(&g_appState);
                 InvalidateRect(hwnd, NULL, FALSE);
             }
