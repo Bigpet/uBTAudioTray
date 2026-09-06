@@ -3,7 +3,6 @@
 
 param(
     [string]$ResDir = "$PSScriptRoot\..\res",
-    [string]$AppAssetsDir = "$PSScriptRoot\..\..\QuickBTTrayApp\Views\Assets",
     [switch]$Rebuild
 )
 
@@ -12,6 +11,8 @@ $ErrorActionPreference = "Stop"
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Host "uBTAudioTray Icon Generator" -ForegroundColor Cyan
 Write-Host "===================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Trying to generate *.ico files from *.svg sources with Inkscape"
 
 # 1. Locate Inkscape
 $cmdCom = Get-Command inkscape.com -ErrorAction SilentlyContinue
@@ -144,14 +145,7 @@ foreach ($f in $tempFiles) {
     if (Test-Path $f) { Remove-Item $f -Force }
 }
 
-# 6. Copy to C# WPF app assets if directory exists
-if (Test-Path $AppAssetsDir) {
-    Copy-Item $icoOn  (Join-Path $AppAssetsDir "icon.ico") -Force
-    Copy-Item $icoOff (Join-Path $AppAssetsDir "icon-connecting.ico") -Force
-    Write-Host "Synced icons to QuickBTTrayApp assets: $AppAssetsDir" -ForegroundColor Cyan
-}
-
-# 7. Refresh Windows Shell Icon Cache
+# 6. Refresh Windows Shell Icon Cache
 try {
     Add-Type -TypeDefinition @"
     using System;
@@ -167,7 +161,7 @@ try {
     # Non-critical if P/Invoke type was already defined
 }
 
-# 8. Rebuild C port if requested
+# 7. Rebuild if requested
 if ($Rebuild) {
     $buildBat = Join-Path $PSScriptRoot "..\build.bat"
     if (Test-Path $buildBat) {
